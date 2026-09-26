@@ -1,0 +1,24 @@
+body {
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+header,
+main section,
+footer {
+  padding: 1rem 0;
+  border-bottom: 1px solid #ccc;
+}
+
+button,
+select {
+  margin-right: 0.5rem;
+  padding: 0.35rem 0.6rem;
+}
+
+#clock {
+  font-variant-numeric: tabular-nums;
+}
