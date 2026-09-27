@@ -4,12 +4,12 @@ const clock = document.querySelector('#clock');
 const playButton = document.querySelector('#play-button');
 const speedSelect = document.querySelector('#speed-select');
 
-let simulatedTime = Date.UTC(1986, 3, 26, 0, 0, 0);
+let simulationTime = Date.UTC(1986, 3, 26, 0, 0, 0);
 let running = true;
 let lastTick = Date.now();
 
 function updateClock() {
-  const date = new Date(simulatedTime);
+  const date = new Date(simulationTime);
   const dateText = date.toLocaleDateString('en-US', {
     day: '2-digit',
     month: 'long',
@@ -28,7 +28,7 @@ function updateClock() {
 
 setInterval(() => {
   const now = Date.now();
-  if (running) simulatedTime += (now - lastTick) * Number(speedSelect.value);
+  if (running) simulationTime += (now - lastTick) * Number(speedSelect.value);
   lastTick = now;
   updateClock();
 }, 100);
