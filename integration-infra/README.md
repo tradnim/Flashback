@@ -8,7 +8,7 @@ Own this folder. Coordinate the shared API contract, connect the services and Mo
 2. Create deployment and database configuration here; keep secrets out of Git and provide service-specific `.env.example` files with names only.
 =======
 2. Create deployment and database configuration here; keep secrets out of Git and provide service-specific `.env.example` files.
->>>>>>> 7b4af41b74af51c035022419d65b85f6f3d0ca7c
+>>>>>>> refs/rewritten/main
 3. Bring the frontend and service endpoints together, then write the one-command local start instructions in the root README.
 4. Keep a dependable demo path available if external AI or voice APIs are unavailable.
 
