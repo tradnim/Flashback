@@ -1,31 +1,60 @@
-# Shared API contract — draft
+# Shared API contract
 
-Chris coordinates changes to this document. Agree on the contract before adding service implementations. All timestamps are ISO 8601 UTC strings; the frontend formats them for display.
+This document describes the public API used by the frontend and backend services. All timestamps are ISO 8601 strings in UTC, with a `Z` suffix.
+
+`simulationTime` and `historicalTime` refer to the same value: the time shown by the simulation clock. The events endpoint uses `simulationTime` in its query string. The AI endpoints use `historicalTime` in their JSON request bodies. The AI service also accepts `simulationTime` in those bodies; if both names are supplied, they must represent the same instant.
 
 ## Historical events
 
-`GET /api/events?time=<ISO-8601 timestamp>`
+`GET /api/events?simulationTime=<ISO-8601 timestamp>`
 
-Returns only verified events whose timestamp is less than or equal to `time`.
+The caller must provide `simulationTime`. Return only verified events whose timestamp is less than or equal to it. Do not substitute the computer's current time if the parameter is missing or invalid; return HTTP 400 instead.
+
+Successful response:
 
 ```json
 {
-  "currentTime": "1986-04-26T00:00:00Z",
-  "events": [
+  "status": "success",
+  "authoritativeClock": "1986-04-26T00:00:00Z",
+  "count": 1,
+  "data": [
     {
-      "id": "stable-event-id",
+      "eventId": "CHER-1986-0426-01",
       "timestamp": "1986-04-26T00:00:00Z",
       "title": "Event title",
       "description": "Verified summary",
-      "category": "plant",
-      "importance": 5,
-      "sources": [{ "label": "Source name", "url": "https://example.org/source" }]
+      "category": "ACCIDENT",
+      "importance": "Critical",
+      "isVerified": true,
+      "citations": [
+        {
+          "sourceName": "Source name",
+          "referenceId": "Report or archive reference",
+          "url": "https://example.org/source"
+        }
+      ]
     }
   ]
 }
 ```
 
-`category` is initially one of `plant`, `response`, `public`, or `context`. The event owner should adjust these to match the verified dataset before implementation.
+- `authoritativeClock` is the timestamp used to filter the results.
+- `count` is the number of records in `data` and must not include future events.
+- `eventId` is the stable identifier for an event.
+- The current dataset uses `OPERATIONAL`, `SAFETY`, `ACCIDENT`, `EMERGENCY_RESPONSE`, and `RADIOLOGICAL` categories.
+- `importance` is an optional string currently using `Low`, `Medium`, `High`, or `Critical`.
+- Each citation has `sourceName` and `referenceId`; `url` is optional.
+
+The route currently returns MongoDB documents, which may include storage metadata such as `_id`, `createdAt`, `updatedAt`, and `__v`. Clients should use the public fields listed above and must not depend on database metadata.
+
+Invalid or missing timestamps return HTTP 400, for example:
+
+```json
+{
+  "error": "INVALID_SIMULATION_TIME",
+  "message": "A valid simulationTime is required."
+}
+```
 
 ## Ask the historian
 
@@ -34,16 +63,31 @@ Returns only verified events whose timestamp is less than or equal to `time`.
 Request:
 
 ```json
-{ "question": "What is known about the situation?", "historicalTime": "1986-04-26T00:00:00Z" }
+{
+  "question": "What is known about the situation?",
+  "historicalTime": "1986-04-26T00:00:00Z"
+}
 ```
 
-Response:
+The AI service receives only verified, cited events at or before `historicalTime`. It must not reveal later outcomes.
+
+Successful response:
 
 ```json
-{ "answer": "Answer grounded in information available at that time.", "sources": [] }
+{
+  "answer": "Answer grounded in information available at that time.",
+  "sources": [
+    {
+      "label": "Source name",
+      "url": "https://example.org/source",
+      "eventId": "CHER-1986-0426-01",
+      "eventTitle": "Event title"
+    }
+  ]
+}
 ```
 
-The AI service receives only events at or before `historicalTime`. It must not reveal later outcomes.
+`sources` may be empty when the unlocked records do not support an answer. `url`, `eventId`, and `eventTitle` may be omitted when unavailable.
 
 ## Radio briefing
 
@@ -52,20 +96,25 @@ The AI service receives only events at or before `historicalTime`. It must not r
 Request:
 
 ```json
-{ "historicalTime": "1986-04-26T00:00:00Z" }
+{
+  "historicalTime": "1986-04-26T00:00:00Z"
+}
 ```
 
-Response:
+Successful response:
 
 ```json
-{ "script": "A brief, time-appropriate radio update.", "audioUrl": "https://example.org/generated-audio.mp3" }
+{
+  "script": "A brief, time-appropriate radio update.",
+  "audioUrl": "data:audio/mpeg;base64,<base64-encoded-mp3>"
+}
 ```
 
-The audio URL may be replaced with a different agreed delivery format. The script must use only events unlocked at `historicalTime`.
+`audioUrl` is a playable MP3 data URL embedded in the JSON response, not a separately hosted file. The script and audio must use only events unlocked at `historicalTime`.
 
 ## Shared rules
 
-- Reject invalid timestamps with HTTP 400 and a small JSON error body.
-- Do not include upcoming event titles, counts, or times in responses; those can spoil the simulation.
+- Reject missing or invalid timestamps with HTTP 400. Timestamps must include a timezone and be interpreted in UTC.
+- Never return future event records or information that reveals future event titles, counts, or times.
 - Keep source records attached to event-derived answers.
-- Coordinate schema and response changes here before implementing them.
+- Coordinate changes to these request and response shapes with all service owners before changing the implementation.
