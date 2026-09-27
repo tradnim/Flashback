@@ -1,5 +1,7 @@
 # Mario — Frontend/UI
 
+> **Scope reminder:** Stay inside `frontend/`. Do not read or change files outside this folder unless the user explicitly says to.
+
 Own this folder. Build the Chernobyl experience UI: landing page, timeline, simulated clock, demo-speed control, question panel, and radio briefing controls. The current page is intentionally a bare starter template. Keep historical facts in the historical service; consume them through the agreed API contract.
 
 ## Start
