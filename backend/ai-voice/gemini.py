@@ -42,8 +42,24 @@ def generate_grounded_json(system_instruction: str, user_content: str) -> dict[s
         "systemInstruction": {"parts": [{"text": system_instruction}]},
         "contents": [{"role": "user", "parts": [{"text": user_content}]}],
         "generationConfig": {
-            "responseMimeType": "application/json",
-            "temperature": 0.2,
+            "responseFormat": {
+                "text": {
+                    "mimeType": "application/json",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "answer": {"type": "string"},
+                            "known": {"type": "boolean"},
+                            "cited_event_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": ["answer", "known", "cited_event_ids"],
+                        "additionalProperties": False,
+                    },
+                }
+            },
         },
     }
     request = Request(
@@ -66,7 +82,13 @@ def generate_grounded_json(system_instruction: str, user_content: str) -> dict[s
     try:
         envelope = json.loads(response_body.decode("utf-8"))
         parts = envelope["candidates"][0]["content"]["parts"]
-        text = "".join(part.get("text", "") for part in parts)
+        text = "".join(
+            part["text"]
+            for part in parts
+            if isinstance(part, dict)
+            and isinstance(part.get("text"), str)
+            and not part.get("thought", False)
+        )
         result = json.loads(text)
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError):
         raise GeminiError("Gemini returned an invalid JSON response") from None
@@ -82,9 +104,8 @@ def answer_question(
 ) -> dict[str, Any]:
     """Answer from time-gated, cited events supplied by the historical engine.
 
-    ``fetch_unlocked_events`` receives the UTC simulated-time cutoff. It must
-    use the historical engine's time-filtered query; its URL and payload are
-    intentionally left to the shared API contract.
+    ``fetch_unlocked_events`` receives the UTC simulated-time cutoff. The HTTP
+    wrapper supplies the historical-engine adapter for that time-filtered query.
     """
     if not isinstance(question, str) or not question.strip():
         raise ValueError("question must be a non-empty string")

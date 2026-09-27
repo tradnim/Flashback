@@ -1,11 +1,46 @@
 # Noriel — AI + Voice
 
-Own this folder. Implement Gemini answers grounded only in the historical context available at the requested simulated time, plus an ElevenLabs spoken briefing based on that same unlocked context.
+Python HTTP service for time-gated historian answers and spoken briefings. It fetches events from James's historical engine before calling an AI provider; `historical_context.py` then applies a second cutoff and keeps only verified, cited records.
 
-## Start here
+## Run locally
 
-1. Agree endpoint names and request/response shapes with Chris in `../../integration-infra/API_CONTRACT.md`.
-2. Retrieve allowed context through the historical engine; do not query or pass future events to Gemini.
-3. Instruct Gemini to say when the outcome is not yet known, and return citations with factual answers.
-4. Generate the radio script from unlocked events only, then return audio in the agreed response format.
-5. Read API keys from environment variables; never commit credentials.
+Use Python 3.10 or newer. From this folder, run:
+
+```powershell
+python server.py
+```
+
+The service listens on `http://127.0.0.1:8000` by default. The historical engine defaults to `http://127.0.0.1:3000` and must be running separately.
+
+## HTTP routes
+
+`POST /api/ask`
+
+```json
+{"question":"What was known?","simulationTime":"1986-04-26T00:00:00Z"}
+```
+
+The request may use the contract's `historicalTime` instead of `simulationTime`. If both are present, they must represent the same instant. The response is `{ "answer": "...", "sources": [...] }`.
+
+`POST /api/broadcast`
+
+```json
+{"simulationTime":"1986-04-26T00:00:00Z"}
+```
+
+The response is `{ "script": "...", "audioUrl": "..." }`. `audioUrl` is currently a playable `data:audio/mpeg;base64,...` URL, so the audio is embedded in the JSON response rather than hosted as a separate file.
+
+Timestamps must include a timezone, such as the UTC `Z` suffix shown above. The service rejects invalid timestamps with HTTP 400.
+
+## Configuration
+
+Set these values in the process environment or in this folder's ignored `.env` file. Process environment values take precedence.
+
+- `GEMINI_API_KEY` (required), `GEMINI_MODEL` (defaults to `gemini-3.8-flash`)
+- `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` (required for audio), `ELEVENLABS_MODEL_ID` (defaults to `eleven_multilingual_v2`)
+- `HISTORICAL_ENGINE_URL` (defaults to `http://127.0.0.1:3000`)
+- `HISTORICAL_ENGINE_TIME_PARAM` (defaults to James's current `simulationTime`; use `time` if the engine adopts the draft contract's query parameter)
+- `AI_VOICE_HOST` (defaults to `127.0.0.1`), `AI_VOICE_PORT` (defaults to `8000`)
+- `AI_VOICE_ALLOWED_ORIGINS` (comma-separated; defaults to localhost and 127.0.0.1 on Vite's port 5173)
+
+Never commit `.env` or API keys.
