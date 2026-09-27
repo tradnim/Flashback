@@ -120,6 +120,9 @@ public audio route to avoid mixed-content blocking.
   that `HISTORICAL_ENGINE_URL` points to it.
 - `OPENROUTER_UNAVAILABLE`: check the local key, model setting, and AI-VOICE
   terminal output. API credentials are never included in error responses.
+- `OPENROUTER_RATE_LIMITED`: OpenRouter or the selected provider rejected the
+  request for rate-limit/capacity reasons. Check the OpenRouter activity and
+  usage pages, then retry after the limit clears.
 - `ELEVENLABS_UNAVAILABLE`: check the local key and voice ID.
 - `AUDIO_NOT_FOUND`: generated audio URLs are temporary and expire after 15
   minutes; request a new briefing.

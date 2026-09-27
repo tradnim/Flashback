@@ -384,11 +384,26 @@ class AIVoiceHandler(BaseHTTPRequestHandler):
                     "message": "Could not retrieve unlocked historical events.",
                 },
             )
-        except OpenRouterError:
-            self._send_json(
-                502,
-                {"error": "OPENROUTER_UNAVAILABLE", "message": "Could not generate an answer."},
-            )
+        except OpenRouterError as exc:
+            if exc.status_code == 429:
+                self._send_json(
+                    503,
+                    {
+                        "error": "OPENROUTER_RATE_LIMITED",
+                        "message": (
+                            "OpenRouter or the selected model provider is rate limiting "
+                            "requests. Check usage and retry later."
+                        ),
+                    },
+                )
+            else:
+                self._send_json(
+                    502,
+                    {
+                        "error": "OPENROUTER_UNAVAILABLE",
+                        "message": "Could not generate an answer.",
+                    },
+                )
         except ElevenLabsError:
             self._send_json(
                 502,

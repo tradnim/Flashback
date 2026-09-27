@@ -22,6 +22,10 @@ except ImportError:  # pragma: no cover - import style depends on the app layout
 class OpenRouterError(RuntimeError):
     """Raised for missing credentials or an unusable OpenRouter response."""
 
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 def generate_grounded_json(system_instruction: str, user_content: str) -> dict[str, Any]:
     """Call OpenRouter's JSON-schema response mode without exposing credentials."""
@@ -75,8 +79,14 @@ def generate_grounded_json(system_instruction: str, user_content: str) -> dict[s
         with urlopen(request, timeout=30) as response:
             response_body = response.read()
     except HTTPError as exc:
+        if exc.code == 429:
+            raise OpenRouterError(
+                "OpenRouter or the selected model provider rate-limited the request.",
+                status_code=exc.code,
+            ) from None
         raise OpenRouterError(
-            f"OpenRouter request failed with HTTP {exc.code}"
+            f"OpenRouter request failed with HTTP {exc.code}",
+            status_code=exc.code,
         ) from None
     except (URLError, TimeoutError):
         raise OpenRouterError("OpenRouter request could not be completed") from None
