@@ -19,6 +19,42 @@ const broadcastButton = document.querySelector('#broadcast-button');
 const broadcastStatus = document.querySelector('#broadcast-status');
 const broadcastPlayer = document.querySelector('#broadcast-player');
 
+// A tiny offline presentation sample copied from James's initial event dataset.
+const DEMO_EVENTS = [
+  {
+    eventId: 'CHER-1986-0425-01',
+    title: 'Preparation for Safety Test on Reactor Unit 4',
+    description: 'Preparations begin for testing the turbogenerator rundown safety system under low-power operating conditions.',
+    timestamp: '1986-04-25T01:00:00Z',
+    category: 'OPERATIONAL',
+    importance: 'Medium',
+    isVerified: true,
+    citations: [
+      {
+        sourceName: 'IAEA INSAG-7 Summary Report',
+        referenceId: 'INSAG-7, Section 2.2',
+        url: 'https://www-pub.iaea.org/MTCD/publications/PDF/Pub913e_web.pdf',
+      },
+    ],
+  },
+  {
+    eventId: 'CHER-1986-0425-02',
+    title: 'Shutdown Postponed by Kiev Grid Controller',
+    description: 'The electricity grid controller in Kiev requests a delay in reactor shutdown due to high power demands across the region.',
+    timestamp: '1986-04-25T14:00:00Z',
+    category: 'OPERATIONAL',
+    importance: 'High',
+    isVerified: true,
+    citations: [
+      {
+        sourceName: 'Soviet State Committee Report',
+        referenceId: 'Vienna Conference Document 1986',
+        url: 'https://www.iaea.org/',
+      },
+    ],
+  },
+];
+
 let simulationTime = Date.UTC(1986, 3, 25, 23, 45, 0);
 let simulationSpeed = 1;
 let running = true;
@@ -53,6 +89,45 @@ function updateClock() {
   const timestamp = isoSimulationTime();
   clock.dateTime = timestamp;
   clock.textContent = formatTime(timestamp);
+}
+
+function unlockedDemoEvents() {
+  return DEMO_EVENTS.filter((event) => Date.parse(event.timestamp) <= simulationTime);
+}
+
+function demoSources(events) {
+  return events.flatMap((event) => event.citations.map((citation) => ({
+    label: citation.sourceName,
+    url: citation.url,
+    eventId: event.eventId,
+    eventTitle: event.title,
+  })));
+}
+
+function demoHistorianResponse() {
+  const events = unlockedDemoEvents();
+  if (events.length === 0) {
+    return {
+      answer: 'The offline demo has no sample events unlocked at this simulation time.',
+      sources: [],
+    };
+  }
+
+  const summaries = events.map((event) => `${formatTime(event.timestamp)}: ${event.title}. ${event.description}`);
+  return {
+    answer: `Offline demo response (not AI-generated). The sample record available by ${formatTime(simulationTime)} says: ${summaries.join(' ')}`,
+    sources: demoSources(events),
+  };
+}
+
+function demoBriefingText() {
+  const events = unlockedDemoEvents();
+  if (events.length === 0) {
+    return 'Demo briefing (text only): no sample events are unlocked at this simulation time.';
+  }
+
+  const headlines = events.map((event) => `${formatTime(event.timestamp)} — ${event.title}`);
+  return `Demo briefing (text only; audio playback is not part of this fallback): ${headlines.join('. ')}.`;
 }
 
 async function requestJson(path, options = {}) {
@@ -166,14 +241,9 @@ async function loadEvents() {
     connectionStatus.classList.remove('is-offline');
     connectionStatus.innerHTML = '<i></i> API connected';
   } catch {
-    timeline.replaceChildren();
-    const error = document.createElement('li');
-    error.className = 'empty-state';
-    error.textContent = 'Timeline unavailable. Check the API connection.';
-    timeline.append(error);
-    eventCount.textContent = 'offline';
+    renderEvents(DEMO_EVENTS);
     connectionStatus.classList.add('is-offline');
-    connectionStatus.innerHTML = '<i></i> API offline';
+    connectionStatus.innerHTML = '<i></i> DEMO MODE · API offline';
   } finally {
     timelineLoading = false;
   }
@@ -238,7 +308,10 @@ questionForm.addEventListener('submit', async (event) => {
     answerStatus.textContent = result.known === false ? 'The outcome is not known at this simulated time.' : 'Historian response';
     addSourceLinks(answerSources, result.sources);
   } catch {
-    answerStatus.textContent = 'Historian unavailable. Check the API connection and try again.';
+    const fallback = demoHistorianResponse();
+    answerText.textContent = fallback.answer;
+    answerStatus.textContent = 'Demo historian response · sample data only';
+    addSourceLinks(answerSources, fallback.sources);
   } finally {
     setButtonBusy(askButton, false, 'Asking…', 'Ask');
   }
@@ -263,7 +336,7 @@ broadcastButton.addEventListener('click', async () => {
     broadcastPlayer.hidden = false;
     broadcastStatus.textContent = result.script || 'Briefing ready.';
   } catch {
-    broadcastStatus.textContent = 'Briefing unavailable. Check the API connection and try again.';
+    broadcastStatus.textContent = demoBriefingText();
   } finally {
     setButtonBusy(broadcastButton, false, 'Generating…', 'Generate briefing');
   }

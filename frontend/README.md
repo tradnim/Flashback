@@ -6,14 +6,17 @@ Own this folder. Build the Chernobyl experience UI: timeline, simulated clock, d
 
 ## Start locally
 
-Use two terminals:
+For the connected local app, start these services in separate terminals:
 
 1. Start MongoDB locally, or set `MONGO_URI` to your MongoDB connection string.
 2. In `backend/historical-engine`, run `npm install` once, then `npm start`.
-3. In this `frontend` folder, run `npm install` once, then `npm run dev`.
-4. Open the URL Vite prints (usually `http://localhost:5173`).
+3. In `backend/ai-voice`, run `python server.py` after its local provider configuration is ready.
+4. In this `frontend` folder, run `npm install` once, then `npm run dev`.
+5. Open the URL Vite prints (usually `http://localhost:5173`).
 
-Vite forwards `/api` requests to `http://localhost:3000`. To use another engine address, set `VITE_HISTORY_ENGINE_URL` before starting Vite. The history engine currently provides the timeline endpoint; the question and audio endpoints require their API service to be connected separately.
+Vite forwards `/api/events` to the historical engine at `http://localhost:3000`, and `/api/ask` plus `/api/broadcast` to the AI/voice service at `http://127.0.0.1:8000`. Set `VITE_HISTORY_ENGINE_URL` or `VITE_AI_VOICE_URL` in a local frontend env file if either service uses a different address. These are service addresses, not API keys.
+
+For a quick offline presentation, the frontend can run by itself. If an API is unavailable, the page uses a small, clearly labeled demo based on two events from James's initial dataset. The historian and radio briefing show sample text; the demo radio fallback does not play audio.
 
 ## Files
 
