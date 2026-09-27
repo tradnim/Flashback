@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 from datetime import datetime
@@ -96,9 +95,10 @@ def generate_briefing(
     simulationTime: str | datetime,
     fetch_unlocked_events: EventFetcher,
 ) -> dict[str, Any]:
-    """Return an MP3 briefing synthesized from historical-engine context.
+    """Return MP3 bytes and citations from historical-engine context.
 
-    The result includes a self-contained data URL playable as an audio source.
+    The HTTP server publishes the bytes at a temporary audio URL so the web
+    client can stream the result without embedding base64 in its JSON response.
     """
     context = load_unlocked_context(simulationTime, fetch_unlocked_events)
     script, cited_ids = build_radio_script(context)
@@ -106,7 +106,7 @@ def generate_briefing(
     return {
         "simulationTime": context["simulationTime"],
         "script": script,
-        "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode('ascii')}",
+        "audio_bytes": audio,
         "content_type": "audio/mpeg",
         "format": "mp3",
         "citations": citations_for_events(context["events"], cited_ids),
