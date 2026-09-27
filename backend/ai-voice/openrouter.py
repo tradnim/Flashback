@@ -1,4 +1,4 @@
-"""Gemini-backed question answering over historical-engine unlocked events."""
+"""OpenRouter-backed question answering over unlocked historical events."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import os
 from datetime import datetime
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 try:  # Support both package imports and this folder on PYTHONPATH.
@@ -20,54 +19,55 @@ except ImportError:  # pragma: no cover - import style depends on the app layout
     from historical_context import EventFetcher, citations_for_events, load_unlocked_context
 
 
-class GeminiError(RuntimeError):
-    """Raised for missing credentials or an unusable Gemini response."""
+class OpenRouterError(RuntimeError):
+    """Raised for missing credentials or an unusable OpenRouter response."""
 
 
 def generate_grounded_json(system_instruction: str, user_content: str) -> dict[str, Any]:
-    """Call Gemini's JSON response mode without exposing credentials in errors."""
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    """Call OpenRouter's JSON-schema response mode without exposing credentials."""
+    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not api_key:
-        raise GeminiError("GEMINI_API_KEY is not configured")
+        raise OpenRouterError("OPENROUTER_API_KEY is not configured")
 
-    model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    model = os.environ.get("OPENROUTER_MODEL", "qwen/qwen3.8-27b:free").strip()
     if not model:
-        raise GeminiError("GEMINI_MODEL cannot be empty")
+        raise OpenRouterError("OPENROUTER_MODEL cannot be empty")
 
-    endpoint = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{quote(model, safe='')}:generateContent"
-    )
     payload = {
-        "systemInstruction": {"parts": [{"text": system_instruction}]},
-        "contents": [{"role": "user", "parts": [{"text": user_content}]}],
-        "generationConfig": {
-            "responseFormat": {
-                "text": {
-                    "mimeType": "application/json",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "answer": {"type": "string"},
-                            "known": {"type": "boolean"},
-                            "cited_event_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                            },
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": user_content},
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "grounded_answer",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "answer": {"type": "string"},
+                        "known": {"type": "boolean"},
+                        "cited_event_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
                         },
-                        "required": ["answer", "known", "cited_event_ids"],
-                        "additionalProperties": False,
                     },
-                }
+                    "required": ["answer", "known", "cited_event_ids"],
+                    "additionalProperties": False,
+                },
             },
         },
+        "provider": {"require_parameters": True},
+        "stream": False,
     }
     request = Request(
-        endpoint,
+        "https://openrouter.ai/api/v1/chat/completions",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            "x-goog-api-key": api_key,
+            "Authorization": f"Bearer {api_key}",
         },
         method="POST",
     )
@@ -75,25 +75,22 @@ def generate_grounded_json(system_instruction: str, user_content: str) -> dict[s
         with urlopen(request, timeout=30) as response:
             response_body = response.read()
     except HTTPError as exc:
-        raise GeminiError(f"Gemini request failed with HTTP {exc.code}") from None
-    except (URLError, TimeoutError) as exc:
-        raise GeminiError("Gemini request could not be completed") from None
+        raise OpenRouterError(
+            f"OpenRouter request failed with HTTP {exc.code}"
+        ) from None
+    except (URLError, TimeoutError):
+        raise OpenRouterError("OpenRouter request could not be completed") from None
 
     try:
         envelope = json.loads(response_body.decode("utf-8"))
-        parts = envelope["candidates"][0]["content"]["parts"]
-        text = "".join(
-            part["text"]
-            for part in parts
-            if isinstance(part, dict)
-            and isinstance(part.get("text"), str)
-            and not part.get("thought", False)
-        )
-        result = json.loads(text)
+        content = envelope["choices"][0]["message"]["content"]
+        if not isinstance(content, str):
+            raise TypeError("OpenRouter message content is not text")
+        result = json.loads(content)
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError):
-        raise GeminiError("Gemini returned an invalid JSON response") from None
+        raise OpenRouterError("OpenRouter returned an invalid JSON response") from None
     if not isinstance(result, dict):
-        raise GeminiError("Gemini response must be a JSON object")
+        raise OpenRouterError("OpenRouter response must be a JSON object")
     return result
 
 
@@ -102,11 +99,7 @@ def answer_question(
     simulationTime: str | datetime,
     fetch_unlocked_events: EventFetcher,
 ) -> dict[str, Any]:
-    """Answer from time-gated, cited events supplied by the historical engine.
-
-    ``fetch_unlocked_events`` receives the UTC simulated-time cutoff. The HTTP
-    wrapper supplies the historical-engine adapter for that time-filtered query.
-    """
+    """Answer using only time-gated, cited events from the historical engine."""
     if not isinstance(question, str) or not question.strip():
         raise ValueError("question must be a non-empty string")
     if len(question) > 4000:
@@ -126,8 +119,6 @@ def answer_question(
             "citations": [],
         }
 
-    # Keep provider data out of the prompt except for the timestamped facts and
-    # event IDs needed to cite the answer. Sources are resolved locally below.
     prompt_events = [
         {
             "event_id": event["event_id"],
@@ -165,15 +156,18 @@ def answer_question(
     known = generated.get("known")
     raw_ids = generated.get("cited_event_ids", [])
     if not isinstance(answer, str) or not answer.strip() or not isinstance(known, bool):
-        raise GeminiError("Gemini response is missing answer or known status")
+        raise OpenRouterError("OpenRouter response is missing answer or known status")
     if not isinstance(raw_ids, list):
         raw_ids = []
     citations = citations_for_events(events, raw_ids)
 
-    # A factual answer without a resolvable source is not returned as verified.
+    # Do not return a factual answer unless it has at least one unlocked source.
     if not citations:
         return {
-            "answer": f"I can't establish the answer from cited historical context unlocked as of {cutoff}.",
+            "answer": (
+                f"I can't establish the answer from cited historical context "
+                f"unlocked as of {cutoff}."
+            ),
             "known": False,
             "simulationTime": cutoff,
             "citations": [],

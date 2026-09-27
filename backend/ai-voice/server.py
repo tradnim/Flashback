@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 try:  # Support package imports and running server.py directly.
     from .eleven import ElevenLabsError, generate_briefing
-    from .gemini import GeminiError, answer_question
+    from .openrouter import OpenRouterError, answer_question
     from .historical_context import (
         HistoricalContextError,
         fetch_events_from_engine,
@@ -24,7 +24,7 @@ try:  # Support package imports and running server.py directly.
     )
 except ImportError:  # pragma: no cover - import style depends on the app layout.
     from eleven import ElevenLabsError, generate_briefing
-    from gemini import GeminiError, answer_question
+    from openrouter import OpenRouterError, answer_question
     from historical_context import HistoricalContextError, fetch_events_from_engine, parse_timestamp
 
 
@@ -243,10 +243,10 @@ class AIVoiceHandler(BaseHTTPRequestHandler):
                     "message": "Could not retrieve unlocked historical events.",
                 },
             )
-        except GeminiError:
+        except OpenRouterError:
             self._send_json(
                 502,
-                {"error": "GEMINI_UNAVAILABLE", "message": "Could not generate an answer."},
+                {"error": "OPENROUTER_UNAVAILABLE", "message": "Could not generate an answer."},
             )
         except ElevenLabsError:
             self._send_json(
