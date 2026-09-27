@@ -1,4 +1,5 @@
 import './styles.css';
+import { resolveAudioUrl } from './audio-url.js';
 
 const clock = document.querySelector('#clock');
 const playButton = document.querySelector('#play-button');
@@ -329,10 +330,7 @@ broadcastButton.addEventListener('click', async () => {
       body: JSON.stringify({ simulationTime: isoSimulationTime() }),
     });
     if (typeof result.audioUrl !== 'string') throw new Error('The response is missing audioUrl.');
-    const audioUrl = new URL(result.audioUrl, window.location.origin);
-    if (!['http:', 'https:'].includes(audioUrl.protocol)) throw new Error('Invalid audio URL.');
-
-    broadcastPlayer.src = audioUrl.href;
+    broadcastPlayer.src = resolveAudioUrl(result.audioUrl, window.location.origin);
     broadcastPlayer.hidden = false;
     broadcastStatus.textContent = result.script || 'Briefing ready.';
   } catch {
