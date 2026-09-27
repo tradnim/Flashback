@@ -3,17 +3,30 @@
 Python HTTP service for Flashback's time-gated historian answers and spoken
 briefings. It asks the historical engine for events at the requested
 `simulationTime`, applies a second cutoff, and passes only verified, cited,
-unlocked records to OpenRouter or the deterministic briefing script. ElevenLabs
+unlocked records to Gemini or the deterministic briefing script. ElevenLabs
 speaks that script; it does not create or add historical facts.
 
 ## Run locally
 
-Use Python 3.10 or newer. Start James's historical engine first, then start
-AI-VOICE from this folder:
+Use Python 3.10 or newer. Install the AI-VOICE dependency and authenticate to
+the Google Cloud project before starting the service. Start James's historical
+engine first, then start AI-VOICE from this folder:
 
 ```powershell
+python -m pip install -r requirements.txt
 python server.py
 ```
+
+For local development, use Application Default Credentials (ADC), not an API
+key in `.env`:
+
+```powershell
+gcloud init
+gcloud auth application-default login
+```
+
+Choose the GCP project linked to the credits and enabled for Agent Platform.
+The Google account used for ADC needs the **Agent Platform User** role.
 
 By default, AI-VOICE listens at `http://127.0.0.1:8000` and the historical
 engine is expected at `http://127.0.0.1:3000`. The frontend's Vite server
@@ -94,8 +107,9 @@ Set values in the process environment or this folder's ignored `.env` file.
 Process environment values take precedence. Copy `.env.example` to `.env` and
 fill in credentials locally; never commit `.env` or share its values.
 
-- `OPENROUTER_API_KEY` (required for answers)
-- `OPENROUTER_MODEL` (defaults to `qwen/qwen3.8-27b:free`)
+- `GOOGLE_CLOUD_PROJECT` (required; project ID used for Agent Platform calls)
+- `GOOGLE_CLOUD_LOCATION` (defaults to `global`)
+- `GEMINI_MODEL` (defaults to `gemini-3.5-flash`)
 - `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` (required for audio)
 - `ELEVENLABS_MODEL_ID` (defaults to `eleven_multilingual_v2`)
 - `HISTORICAL_ENGINE_URL` (defaults to `http://127.0.0.1:3000`)
@@ -106,6 +120,10 @@ fill in credentials locally; never commit `.env` or share its values.
   origins)
 - `AI_VOICE_PUBLIC_URL` (optional browser-reachable base URL for audio; when
   empty, AI-VOICE uses the request origin's hostname and its listening port)
+
+Gemini uses the local ADC credentials created by `gcloud auth
+application-default login`. No Gemini API key is needed. Keep `.env` ignored
+and never commit credentials.
 
 For playback from another device using Vite's network link, set
 `AI_VOICE_HOST=0.0.0.0`, add the exact frontend network origin to
@@ -118,11 +136,12 @@ public audio route to avoid mixed-content blocking.
 
 - `HISTORICAL_ENGINE_UNAVAILABLE`: check that the Node service is running and
   that `HISTORICAL_ENGINE_URL` points to it.
-- `OPENROUTER_UNAVAILABLE`: check the local key, model setting, and AI-VOICE
-  terminal output. API credentials are never included in error responses.
-- `OPENROUTER_RATE_LIMITED`: OpenRouter or the selected provider rejected the
-  request for rate-limit/capacity reasons. Check the OpenRouter activity and
-  usage pages, then retry after the limit clears.
+- `GEMINI_UNAVAILABLE`: check `GOOGLE_CLOUD_PROJECT`, the selected model, and
+  AI-VOICE terminal output. Credential details are never included in responses.
+- `GEMINI_PERMISSION_DENIED`: confirm ADC is signed in to the intended project
+  and that the account has the **Agent Platform User** role.
+- `GEMINI_RATE_LIMITED`: Agent Platform returned HTTP 429 for quota or capacity
+  reasons. Retry after a short delay and check the project's quota/usage.
 - `ELEVENLABS_UNAVAILABLE`: check the local key and voice ID.
 - `AUDIO_NOT_FOUND`: generated audio URLs are temporary and expire after 15
   minutes; request a new briefing.

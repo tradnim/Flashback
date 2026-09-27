@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 try:  # Support package imports and running server.py directly.
     from .eleven import ElevenLabsError, generate_briefing
-    from .openrouter import OpenRouterError, answer_question
+    from .gemini import GeminiError, answer_question
     from .historical_context import (
         HistoricalContextError,
         fetch_events_from_engine,
@@ -28,7 +28,7 @@ try:  # Support package imports and running server.py directly.
     )
 except ImportError:  # pragma: no cover - import style depends on the app layout.
     from eleven import ElevenLabsError, generate_briefing
-    from openrouter import OpenRouterError, answer_question
+    from gemini import GeminiError, answer_question
     from historical_context import HistoricalContextError, fetch_events_from_engine, parse_timestamp
 
 
@@ -384,15 +384,26 @@ class AIVoiceHandler(BaseHTTPRequestHandler):
                     "message": "Could not retrieve unlocked historical events.",
                 },
             )
-        except OpenRouterError as exc:
+        except GeminiError as exc:
             if exc.status_code == 429:
                 self._send_json(
                     503,
                     {
-                        "error": "OPENROUTER_RATE_LIMITED",
+                        "error": "GEMINI_RATE_LIMITED",
                         "message": (
-                            "OpenRouter or the selected model provider is rate limiting "
-                            "requests. Check usage and retry later."
+                            "Gemini on Agent Platform is rate limiting requests or has "
+                            "limited capacity. Retry after a short delay."
+                        ),
+                    },
+                )
+            elif exc.status_code in (401, 403):
+                self._send_json(
+                    502,
+                    {
+                        "error": "GEMINI_PERMISSION_DENIED",
+                        "message": (
+                            "Gemini on Agent Platform rejected the local credentials "
+                            "or project permissions."
                         ),
                     },
                 )
@@ -400,7 +411,7 @@ class AIVoiceHandler(BaseHTTPRequestHandler):
                 self._send_json(
                     502,
                     {
-                        "error": "OPENROUTER_UNAVAILABLE",
+                        "error": "GEMINI_UNAVAILABLE",
                         "message": "Could not generate an answer.",
                     },
                 )
