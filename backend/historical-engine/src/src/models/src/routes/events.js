@@ -45,15 +45,6 @@ app.get('/api/events', async (req, res) => {
   }
 });
 
-// Connect to MongoDB and start server
-mongoose.connect(MONGO_URI)
-  .asyncConnect = async () => {
-    await initializeDatabase();
-    app.listen(PORT, () => {
-      console.log(`[API Server] Chernobyl simulation event service running on port ${PORT}`);
-    });
-  };
-
 // If run directly
 if (require.main === module) {
   mongoose.connect(MONGO_URI)
