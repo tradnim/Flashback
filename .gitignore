@@ -1,0 +1,4 @@
+# Local environment files may contain database passwords or API keys.
+**/.env
+**/.env.*
+!**/.env.example

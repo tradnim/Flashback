@@ -8,6 +8,37 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/chernobyl_simulation';
 
+const ISO_UTC_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/;
+
+function parseSimulationTime(value) {
+  if (typeof value !== 'string') return null;
+
+  const timestamp = value.trim();
+  const match = timestamp.match(ISO_UTC_TIMESTAMP);
+  if (!match) return null;
+
+  const normalizedTimestamp = timestamp.replace(
+    /\.(\d+)Z$/,
+    (_, fraction) => `.${fraction.padEnd(3, '0').slice(0, 3)}Z`
+  );
+  const parsed = new Date(normalizedTimestamp);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() + 1 !== month ||
+    parsed.getUTCDate() !== day ||
+    parsed.getUTCHours() !== hour ||
+    parsed.getUTCMinutes() !== minute ||
+    parsed.getUTCSeconds() !== second
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
 /**
  * GET /api/events
  * Query Parameters:
@@ -16,15 +47,12 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/chernobyl_
 app.get('/api/events', async (req, res) => {
   try {
     const { simulationTime } = req.query;
+    const authoritativeClock = parseSimulationTime(simulationTime);
 
-    // Fallback to current real-world time if simulation clock is omitted during testing,
-    // though integration clients (UI/AI) must supply the authoritative simulation timestamp.
-    const authoritativeClock = simulationTime ? new Date(simulationTime) : new Date();
-
-    if (isNaN(authoritativeClock.getTime())) {
+    if (!authoritativeClock) {
       return res.status(400).json({
         error: 'INVALID_SIMULATION_TIME',
-        message: 'The provided simulationTime query parameter is not a valid ISO-8601 date string.'
+        message: 'A valid UTC simulationTime is required.'
       });
     }
 

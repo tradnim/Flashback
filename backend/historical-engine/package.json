@@ -4,7 +4,7 @@
   "description": "Authoritative simulation-time event service and MongoDB schema for Chernobyl disaster tracking.",
   "main": "src/src/models/src/routes/events.js",
   "scripts": {
-    "start": "node src/src/models/src/routes/events.js"
+    "start": "node --env-file=.env src/src/models/src/routes/events.js"
   },
   "dependencies": {
     "express": "^4.19.2",
