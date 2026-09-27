@@ -1,6 +1,6 @@
 # Noriel — AI + Voice
 
-Python HTTP service for time-gated historian answers and spoken briefings. It fetches events from James's historical engine before calling OpenRouter or ElevenLabs; `historical_context.py` then applies a second cutoff and keeps only verified, cited records.
+Python HTTP service for time-gated historian answers and spoken briefings. It fetches events from James's historical engine before calling an AI provider; `historical_context.py` then applies a second cutoff and keeps only verified, cited records.
 
 ## Run locally
 
@@ -36,7 +36,7 @@ Timestamps must include a timezone, such as the UTC `Z` suffix shown above. The 
 
 Set these values in the process environment or in this folder's ignored `.env` file. Process environment values take precedence.
 
-- `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL` (defaults to `qwen/qwen3.8-27b:free`)
+- `GEMINI_API_KEY` (required), `GEMINI_MODEL` (defaults to `gemini-3.8-flash`)
 - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` (required for audio), `ELEVENLABS_MODEL_ID` (defaults to `eleven_multilingual_v2`)
 - `HISTORICAL_ENGINE_URL` (defaults to `http://127.0.0.1:3000`)
 - `HISTORICAL_ENGINE_TIME_PARAM` (defaults to James's current `simulationTime`; use `time` if the engine adopts the draft contract's query parameter)

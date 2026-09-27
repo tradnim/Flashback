@@ -27,7 +27,14 @@ async function initializeDatabase() {
  * @returns {Promise<Array>} List of unlocked events with citations.
  */
 async function getEventsUpToSimulationTime(simulationTimestamp) {
-  const targetTime = simulationTimestamp ? new Date(simulationTimestamp) : new Date();
+  if (simulationTimestamp === undefined || simulationTimestamp === null || simulationTimestamp === '') {
+    throw new TypeError('simulationTimestamp is required');
+  }
+
+  const targetTime = new Date(simulationTimestamp);
+  if (Number.isNaN(targetTime.getTime())) {
+    throw new TypeError('simulationTimestamp must be a valid date');
+  }
 
   // Strict simulation time rule: timestamp <= targetTime
   const query = {

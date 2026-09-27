@@ -2,9 +2,9 @@
   "name": "chernobyl-simulation-events",
   "version": "1.0.0",
   "description": "Authoritative simulation-time event service and MongoDB schema for Chernobyl disaster tracking.",
-  "main": "src/routes/events.js",
+  "main": "src/src/models/src/routes/events.js",
   "scripts": {
-    "start": "node src/routes/events.js"
+    "start": "node --env-file=.env src/src/models/src/routes/events.js"
   },
   "dependencies": {
     "express": "^4.19.2",

@@ -3,47 +3,89 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chernobyl — Live Through History</title>
+    <meta name="theme-color" content="#F5EDE0" />
+    <meta name="description" content="Explore the Chernobyl timeline one moment at a time." />
+    <title>Flashback — Chernobyl</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <header>
-      <h1>Chernobyl: Live Through History</h1>
-      <p>A simple starter template for the hackathon project.</p>
-    </header>
+    <div class="app-shell">
+      <main id="top">
+        <header class="brand-header">
+          <a class="brand-logo" href="#top" aria-label="Flashback home">
+            <span>FLASH</span><span class="brand-logo-back">BACK</span><span class="brand-mark" aria-hidden="true">↶</span>
+          </a>
+        </header>
 
-    <main>
-      <section aria-labelledby="clock-heading">
-        <h2 id="clock-heading">Simulated time</h2>
-        <p><time id="clock">April 26, 1986 · 00:00:00 UTC</time></p>
-        <button id="play-button" type="button">Pause</button>
-        <label for="speed-select">Speed</label>
-        <select id="speed-select">
-          <option value="1">1×</option>
-          <option value="60">60×</option>
-          <option value="600" selected>600× demo</option>
-        </select>
-      </section>
+        <div class="glow-divider" aria-hidden="true"></div>
 
-      <section aria-labelledby="timeline-heading">
-        <h2 id="timeline-heading">Timeline</h2>
-        <p>James: show verified events here as simulated time advances.</p>
-      </section>
+        <section class="command-center-panel glass-panel" aria-label="Simulation controls">
+          <div class="clock-copy">
+            <div class="system-label"><span>SIMULATION TIME · UTC</span><span id="connection-status" class="connection-status" role="status"><i></i> CONNECTING</span></div>
+            <time id="clock" datetime="1986-04-25T23:45:00.000Z">APR 25, 1986 — 23:45:00 UTC</time>
+          </div>
+          <div class="command-controls">
+            <div class="run-controls">
+              <button id="play-button" class="play-button" type="button" aria-label="Pause simulation" aria-pressed="true"><span id="play-icon" aria-hidden="true">Ⅱ</span></button>
+              <span id="run-status" class="run-status">ACTIVE RUN</span>
+            </div>
+            <span class="control-divider" aria-hidden="true"></span>
+            <div class="speed-control" aria-label="Simulation speed">
+              <span class="speed-label">SPEED</span>
+              <div class="speed-options">
+                <button class="speed-button is-active" type="button" data-speed="1" aria-pressed="true">1×</button>
+                <button class="speed-button" type="button" data-speed="2" aria-pressed="false">2×</button>
+                <button class="speed-button" type="button" data-speed="5" aria-pressed="false">5×</button>
+                <button class="speed-button" type="button" data-speed="10" aria-pressed="false">10×</button>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <section aria-labelledby="ask-heading">
-        <h2 id="ask-heading">Ask the historian</h2>
-        <p>Noriel: add a question form and spoiler-safe answer here.</p>
-      </section>
+        <div class="content-grid">
+          <section class="timeline-section" aria-labelledby="timeline-heading">
+            <div class="section-heading">
+              <div><p class="eyebrow">EVENTS</p><h2 id="timeline-heading">What has happened</h2></div>
+              <span id="event-count" class="event-count">0</span>
+            </div>
+            <ol id="timeline-events" class="timeline-list" aria-live="polite">
+              <li class="empty-state">Events appear here as the simulation time advances.</li>
+            </ol>
+          </section>
 
-      <section aria-labelledby="broadcast-heading">
-        <h2 id="broadcast-heading">Radio briefing</h2>
-        <p>Noriel: add the generated broadcast player here.</p>
-      </section>
-    </main>
+          <aside class="side-panels">
+            <section class="glass-panel ask-panel" aria-labelledby="ask-heading">
+              <p class="eyebrow">QUESTIONS</p>
+              <h2 id="ask-heading">Ask about this moment</h2>
+              <form id="question-form">
+                <label class="visually-hidden" for="question-input">Ask a question</label>
+                <input id="question-input" name="question" type="text" maxlength="4000" placeholder="Write your question…" required />
+                <button id="ask-button" class="button button-primary" type="submit">Ask <span aria-hidden="true">→</span></button>
+              </form>
+              <div id="answer-area" class="answer-area" aria-live="polite" hidden>
+                <p id="answer-status" class="response-status"></p>
+                <p id="answer-text" class="answer-text"></p>
+                <p class="citation-heading">CITATIONS</p>
+                <ul id="answer-sources" class="source-list"></ul>
+              </div>
+              <p class="panel-note">Answers are limited to information available at the current simulation time.</p>
+            </section>
 
-    <footer>
-      <p>Starter project · Replace this text and build out the interface.</p>
-    </footer>
+            <section class="glass-panel broadcast-panel" aria-labelledby="broadcast-heading">
+              <p class="eyebrow">AUDIO</p>
+              <h2 id="broadcast-heading">Listen to a short briefing</h2>
+              <button id="broadcast-button" class="button button-secondary" type="button">Create briefing</button>
+              <p id="broadcast-status" class="response-status" aria-live="polite"></p>
+              <audio id="broadcast-player" controls preload="none" hidden></audio>
+            </section>
+          </aside>
+        </div>
+      </main>
 
+      <footer class="footer"><a href="https://commons.wikimedia.org/wiki/File:IAEA_02790061_(5613133650).jpg" target="_blank" rel="noopener noreferrer">Photo: IAEA Imagebank · CC BY-SA 2.0</a></footer>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

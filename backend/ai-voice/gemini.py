@@ -1,4 +1,4 @@
-"""OpenRouter-backed question answering over historical-engine unlocked events."""
+"""Gemini-backed question answering over historical-engine unlocked events."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 try:  # Support both package imports and this folder on PYTHONPATH.
@@ -19,56 +20,54 @@ except ImportError:  # pragma: no cover - import style depends on the app layout
     from historical_context import EventFetcher, citations_for_events, load_unlocked_context
 
 
-class OpenRouterError(RuntimeError):
-    """Raised for missing credentials or an unusable model response."""
+class GeminiError(RuntimeError):
+    """Raised for missing credentials or an unusable Gemini response."""
 
 
 def generate_grounded_json(system_instruction: str, user_content: str) -> dict[str, Any]:
-    """Call OpenRouter's JSON-schema response mode without exposing credentials."""
-    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    """Call Gemini's JSON response mode without exposing credentials in errors."""
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
-        raise OpenRouterError("OPENROUTER_API_KEY is not configured")
+        raise GeminiError("GEMINI_API_KEY is not configured")
 
-    model = os.environ.get("OPENROUTER_MODEL", "qwen/qwen3.8-27b:free").strip()
+    model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
     if not model:
-        raise OpenRouterError("OPENROUTER_MODEL cannot be empty")
+        raise GeminiError("GEMINI_MODEL cannot be empty")
 
-    endpoint = "https://openrouter.ai/api/v1/chat/completions"
+    endpoint = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{quote(model, safe='')}:generateContent"
+    )
     payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": user_content},
-        ],
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "grounded_answer",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "answer": {"type": "string"},
-                        "known": {"type": "boolean"},
-                        "cited_event_ids": {
-                            "type": "array",
-                            "items": {"type": "string"},
+        "systemInstruction": {"parts": [{"text": system_instruction}]},
+        "contents": [{"role": "user", "parts": [{"text": user_content}]}],
+        "generationConfig": {
+            "responseFormat": {
+                "text": {
+                    "mimeType": "application/json",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "answer": {"type": "string"},
+                            "known": {"type": "boolean"},
+                            "cited_event_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
                         },
+                        "required": ["answer", "known", "cited_event_ids"],
+                        "additionalProperties": False,
                     },
-                    "required": ["answer", "known", "cited_event_ids"],
-                    "additionalProperties": False,
                 }
             },
         },
-        "provider": {"require_parameters": True},
-        "stream": False,
     }
     request = Request(
         endpoint,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
+            "x-goog-api-key": api_key,
         },
         method="POST",
     )
@@ -76,20 +75,25 @@ def generate_grounded_json(system_instruction: str, user_content: str) -> dict[s
         with urlopen(request, timeout=30) as response:
             response_body = response.read()
     except HTTPError as exc:
-        raise OpenRouterError(f"OpenRouter request failed with HTTP {exc.code}") from None
+        raise GeminiError(f"Gemini request failed with HTTP {exc.code}") from None
     except (URLError, TimeoutError) as exc:
-        raise OpenRouterError("OpenRouter request could not be completed") from None
+        raise GeminiError("Gemini request could not be completed") from None
 
     try:
         envelope = json.loads(response_body.decode("utf-8"))
-        text = envelope["choices"][0]["message"]["content"]
-        if not isinstance(text, str):
-            raise TypeError("OpenRouter message content is not text")
+        parts = envelope["candidates"][0]["content"]["parts"]
+        text = "".join(
+            part["text"]
+            for part in parts
+            if isinstance(part, dict)
+            and isinstance(part.get("text"), str)
+            and not part.get("thought", False)
+        )
         result = json.loads(text)
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError):
-        raise OpenRouterError("OpenRouter returned an invalid JSON response") from None
+        raise GeminiError("Gemini returned an invalid JSON response") from None
     if not isinstance(result, dict):
-        raise OpenRouterError("OpenRouter response must be a JSON object")
+        raise GeminiError("Gemini response must be a JSON object")
     return result
 
 
@@ -161,7 +165,7 @@ def answer_question(
     known = generated.get("known")
     raw_ids = generated.get("cited_event_ids", [])
     if not isinstance(answer, str) or not answer.strip() or not isinstance(known, bool):
-        raise OpenRouterError("OpenRouter response is missing answer or known status")
+        raise GeminiError("Gemini response is missing answer or known status")
     if not isinstance(raw_ids, list):
         raw_ids = []
     citations = citations_for_events(events, raw_ids)
