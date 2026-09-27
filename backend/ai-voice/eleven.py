@@ -28,17 +28,17 @@ class ElevenLabsError(RuntimeError):
 
 def build_radio_script(context: dict[str, Any]) -> tuple[str, list[str]]:
     """Build speech only from the facts in the already-filtered event context."""
-    simulated_time = context["simulated_time"]
+    simulationTime = context["simulationTime"]
     events = context["events"]
     if not events:
         return (
             "Flashback briefing. No cited events are available in the unlocked "
-            f"historical context as of {simulated_time}, so there are no sourced "
+            f"historical context as of {simulationTime}, so there are no sourced "
             "event details to brief.",
             [],
         )
 
-    lines = [f"Flashback briefing, based on the unlocked record as of {simulated_time}."]
+    lines = [f"Flashback briefing, based on the unlocked record as of {simulationTime}."]
     included_ids: list[str] = []
     for event in events:
         spoken_time = parse_timestamp(event["occurred_at"]).strftime("%B %d, %Y at %H:%M UTC")
@@ -93,21 +93,20 @@ def _synthesize_speech(script: str) -> bytes:
 
 
 def generate_briefing(
-    simulated_time: str | datetime,
+    simulationTime: str | datetime,
     fetch_unlocked_events: EventFetcher,
 ) -> dict[str, Any]:
     """Return an MP3 briefing synthesized from historical-engine context.
 
-    The result is JSON-friendly while the shared endpoint contract is pending:
-    callers receive base64 audio, its MIME type, the spoken script, and sources.
+    The result includes a self-contained data URL playable as an audio source.
     """
-    context = load_unlocked_context(simulated_time, fetch_unlocked_events)
+    context = load_unlocked_context(simulationTime, fetch_unlocked_events)
     script, cited_ids = build_radio_script(context)
     audio = _synthesize_speech(script)
     return {
-        "simulated_time": context["simulated_time"],
+        "simulationTime": context["simulationTime"],
         "script": script,
-        "audio_base64": base64.b64encode(audio).decode("ascii"),
+        "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode('ascii')}",
         "content_type": "audio/mpeg",
         "format": "mp3",
         "citations": citations_for_events(context["events"], cited_ids),

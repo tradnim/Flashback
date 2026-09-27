@@ -100,7 +100,7 @@ def _event_sources(event: Mapping[str, Any]) -> list[dict[str, str]]:
 
 
 def load_unlocked_context(
-    simulated_time: str | datetime,
+    simulationTime: str | datetime,
     fetch_unlocked_events: EventFetcher,
 ) -> dict[str, Any]:
     """Fetch at the requested time and fail closed on future or uncited rows.
@@ -109,7 +109,7 @@ def load_unlocked_context(
     query, passing the exact UTC cutoff it receives. Its route remains an
     injected dependency until the shared API contract is agreed.
     """
-    cutoff = parse_timestamp(simulated_time)
+    cutoff = parse_timestamp(simulationTime)
     cutoff_text = cutoff.isoformat().replace("+00:00", "Z")
     response = fetch_unlocked_events(cutoff_text)
 
@@ -152,7 +152,7 @@ def load_unlocked_context(
 
     allowed.sort(key=lambda event: parse_timestamp(event["occurred_at"]))
 
-    return {"simulated_time": cutoff_text, "events": allowed}
+    return {"simulationTime": cutoff_text, "events": allowed}
 
 
 def citations_for_events(

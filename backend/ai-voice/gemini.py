@@ -77,7 +77,7 @@ def generate_grounded_json(system_instruction: str, user_content: str) -> dict[s
 
 def answer_question(
     question: str,
-    simulated_time: str | datetime,
+    simulationTime: str | datetime,
     fetch_unlocked_events: EventFetcher,
 ) -> dict[str, Any]:
     """Answer from time-gated, cited events supplied by the historical engine.
@@ -91,9 +91,9 @@ def answer_question(
     if len(question) > 4000:
         raise ValueError("question must be 4000 characters or fewer")
 
-    context = load_unlocked_context(simulated_time, fetch_unlocked_events)
+    context = load_unlocked_context(simulationTime, fetch_unlocked_events)
     events = context["events"]
-    cutoff = context["simulated_time"]
+    cutoff = context["simulationTime"]
     if not events:
         return {
             "answer": (
@@ -101,7 +101,7 @@ def answer_question(
                 f"unlocked as of {cutoff}."
             ),
             "known": False,
-            "simulated_time": cutoff,
+            "simulationTime": cutoff,
             "citations": [],
         }
 
@@ -132,7 +132,7 @@ def answer_question(
     )
     user_content = json.dumps(
         {
-            "simulated_time": cutoff,
+            "simulationTime": cutoff,
             "question": question.strip(),
             "unlocked_events": prompt_events,
         },
@@ -154,13 +154,13 @@ def answer_question(
         return {
             "answer": f"I can't establish the answer from cited historical context unlocked as of {cutoff}.",
             "known": False,
-            "simulated_time": cutoff,
+            "simulationTime": cutoff,
             "citations": [],
         }
 
     return {
         "answer": answer.strip(),
         "known": known,
-        "simulated_time": cutoff,
+        "simulationTime": cutoff,
         "citations": citations,
     }
