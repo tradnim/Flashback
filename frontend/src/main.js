@@ -21,6 +21,8 @@ const broadcastStatus = document.querySelector('#broadcast-status');
 const broadcastPlayer = document.querySelector('#broadcast-player');
 const demoMode = document.querySelector('#demo-mode');
 const timelineStatus = document.querySelector('#timeline-status');
+const jumpButton = document.querySelector('#jump-next-event');
+const jumpStatus = document.querySelector('#jump-status');
 let modeVersion = 0;
 let lastLiveEvents = null;
 
@@ -212,6 +214,7 @@ function renderEvents(events) {
   for (const event of unlockedEvents) {
     const item = document.createElement('li');
     item.className = 'event-entry';
+    item.dataset.eventId = event.eventId;
 
     const meta = document.createElement('div');
     meta.className = 'event-meta';
@@ -311,6 +314,41 @@ for (const button of speedButtons) {
       option.setAttribute('aria-pressed', String(selected));
     }
     lastTick = Date.now();
+  });
+}
+
+if (import.meta.env.DEV) {
+  jumpButton.hidden = false;
+  jumpButton.addEventListener('click', async () => {
+    if (demoMode.checked) {
+      jumpStatus.hidden = false;
+      jumpStatus.textContent = 'Switch off Offline demo to jump through live events.';
+      return;
+    }
+    jumpButton.disabled = true;
+    jumpStatus.hidden = false;
+    jumpStatus.textContent = 'Finding the next event…';
+    try {
+      const query = new URLSearchParams({ simulationTime: isoSimulationTime() });
+      const result = await requestJson(`/api/events/next?${query}`);
+      simulationTime = Date.parse(result.event.timestamp);
+      running = false;
+      playIcon.textContent = '▶';
+      playButton.setAttribute('aria-label', 'Resume simulation');
+      playButton.setAttribute('aria-pressed', 'false');
+      runStatus.textContent = 'PAUSED';
+      lastTick = Date.now();
+      updateClock();
+      lastTimelineRefresh = Date.now();
+      await loadEvents();
+      const entry = [...timeline.children].find(item => item.dataset.eventId === result.event.eventId);
+      entry?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      jumpStatus.textContent = `Jumped to ${result.event.title}.`;
+    } catch (error) {
+      jumpStatus.textContent = error.message;
+    } finally {
+      jumpButton.disabled = false;
+    }
   });
 }
 

@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { connectDatabase, pingDatabase, databaseDiagnostic } = require('../../../../database');
-const { getEventsUpToSimulationTime } = require('../services/eventService');
+const { getEventsUpToSimulationTime, getNextVerifiedEvent } = require('../services/eventService');
 
 const app = express();
 app.use(express.json());
@@ -14,6 +14,25 @@ app.get('/ready', async (_req, res) => {
     res.json({ status: 'ready', database: 'connected' });
   } catch {
     res.status(503).json({ status: 'unavailable', error: 'DATABASE_UNAVAILABLE' });
+  }
+});
+
+// Available only from the local development server; the normal timeline API
+// never reveals future events.
+app.get('/api/events/next', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'NOT_FOUND' });
+  }
+  const simulationTime = parseSimulationTime(req.query.simulationTime);
+  if (!simulationTime) {
+    return res.status(400).json({ error: 'INVALID_SIMULATION_TIME', message: 'A valid UTC simulationTime is required.' });
+  }
+  try {
+    const event = await getNextVerifiedEvent(simulationTime);
+    if (!event) return res.status(404).json({ error: 'NO_NEXT_EVENT', message: 'There are no more verified events.' });
+    return res.json({ status: 'success', simulationTime: simulationTime.toISOString(), event });
+  } catch {
+    return res.status(503).json({ error: 'DATABASE_UNAVAILABLE', message: 'The event database is unavailable.' });
   }
 });
 

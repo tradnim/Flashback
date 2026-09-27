@@ -388,6 +388,11 @@ audio:focus-visible {
   line-height: 1.55;
 }
 
+.source-list,
+.citation-heading {
+  display: none !important;
+}
+
 .source-list {
   display: flex;
   flex-wrap: wrap;

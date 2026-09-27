@@ -58,6 +58,8 @@ Both services: `GET /health` for liveness. Engine `GET /ready` pings MongoDB. AI
 
 Frontend routing: `/api/events` → 3000; `/api/ask`, `/api/broadcast`, `/api/audio` → 8000. `/api/history/health|ready` and `/api/ai/health|ready` map to service health paths.
 
+Development only: `GET /api/events/next?simulationTime=<UTC ISO timestamp>` returns the earliest verified event strictly after the supplied time. It returns 404 `NO_NEXT_EVENT` at the end of the timeline and is disabled when the engine runs with `NODE_ENV=production`. The Vite development UI's **Jump to next event** control advances the clock to that event, pauses, loads the newly unlocked timeline, and scrolls the event into view. The control is unavailable in production builds and Offline demo mode.
+
 AI errors contain `error` and an optional safe `message`: `INVALID_REQUEST` (400), `REQUEST_TOO_LARGE` (413), `ORIGIN_NOT_ALLOWED` (403), `HISTORICAL_ENGINE_UNAVAILABLE` (502), `GEMINI_NOT_CONFIGURED`/`ELEVENLABS_NOT_CONFIGURED` (503), `GEMINI_RATE_LIMITED` (503), `GEMINI_PERMISSION_DENIED`/`GEMINI_UNAVAILABLE`/`ELEVENLABS_UNAVAILABLE` (502). Never expose credential-bearing provider error details.
 
 Offline demo is explicitly selected, never an automatic error fallback. Live failures retain the last successful timeline; timeline, question and audio errors are displayed separately.

@@ -46,7 +46,17 @@ async function getEventsUpToSimulationTime(simulationTimestamp) {
     .maxTimeMS(5000).lean();
 }
 
+async function getNextVerifiedEvent(simulationTimestamp) {
+  const targetTime = new Date(simulationTimestamp);
+  if (Number.isNaN(targetTime.getTime())) throw new TypeError('simulationTime must be a valid date');
+  return ChernobylEvent.findOne({
+    timestamp: { $gt: targetTime },
+    isVerified: true
+  }).sort({ timestamp: 1 }).maxTimeMS(5000).lean();
+}
+
 module.exports = {
   initializeDatabase,
-  getEventsUpToSimulationTime
+  getEventsUpToSimulationTime,
+  getNextVerifiedEvent
 };
