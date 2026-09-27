@@ -23,8 +23,12 @@ const demoMode = document.querySelector('#demo-mode');
 const timelineStatus = document.querySelector('#timeline-status');
 const jumpButton = document.querySelector('#jump-next-event');
 const jumpStatus = document.querySelector('#jump-status');
+const notificationsButton = document.querySelector('#notifications-button');
+const notificationStatus = document.querySelector('#notification-status');
 let modeVersion = 0;
 let lastLiveEvents = null;
+let notificationsEnabled = false;
+let observedUnlockedEventIds = null;
 
 // A tiny offline presentation sample copied from James's initial event dataset.
 const DEMO_EVENTS = [
@@ -193,12 +197,53 @@ function addSourceLinks(container, sources) {
   }
 }
 
-function renderEvents(events) {
-  const unlockedEvents = events
+function unlockedEventsAtCurrentTime(events) {
+  return events
     .filter((event) => event && Number.isFinite(Date.parse(event.timestamp)))
     .filter((event) => event.isVerified === true)
     .filter((event) => Date.parse(event.timestamp) <= simulationTime)
     .sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp));
+}
+
+function newlyUnlockedEvents(events) {
+  const unlockedEvents = unlockedEventsAtCurrentTime(events);
+  if (observedUnlockedEventIds === null) {
+    observedUnlockedEventIds = new Set(unlockedEvents.map((event) => event.eventId).filter(Boolean));
+    return [];
+  }
+
+  const newlyUnlocked = unlockedEvents.filter((event) => event.eventId && !observedUnlockedEventIds.has(event.eventId));
+  for (const event of unlockedEvents) {
+    if (event.eventId) observedUnlockedEventIds.add(event.eventId);
+  }
+  return newlyUnlocked;
+}
+
+function showEventNotifications(events) {
+  if (!notificationsEnabled || Notification.permission !== 'granted') return;
+
+  for (const event of events) {
+    try {
+      const notification = new Notification(event.title || 'New timeline event', {
+        body: formatTime(event.timestamp),
+        tag: `flashback-${event.eventId}`,
+      });
+      notification.addEventListener('click', () => {
+        window.focus();
+        [...timeline.querySelectorAll('.event-entry')]
+          .find((entry) => entry.dataset.eventId === event.eventId)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        notification.close();
+      });
+    } catch {
+      notificationStatus.textContent = 'Could not show a browser notification.';
+      return;
+    }
+  }
+}
+
+function renderEvents(events) {
+  const unlockedEvents = unlockedEventsAtCurrentTime(events);
 
   eventCount.textContent = `${unlockedEvents.length} ${unlockedEvents.length === 1 ? 'event' : 'events'}`;
   timeline.replaceChildren();
@@ -246,6 +291,7 @@ function renderEvents(events) {
 
 async function loadEvents() {
   if (demoMode.checked) {
+    showEventNotifications(newlyUnlockedEvents(DEMO_EVENTS));
     renderEvents(DEMO_EVENTS);
     connectionStatus.textContent = 'OFFLINE DEMO';
     connectionStatus.classList.add('is-offline');
@@ -263,7 +309,9 @@ async function loadEvents() {
     if (version !== modeVersion) return;
     const events = result.events ?? result.data;
     if (!Array.isArray(events)) throw new Error('The event response is missing its event list.');
+    const newEvents = newlyUnlockedEvents(events);
     renderEvents(events);
+    showEventNotifications(newEvents);
     lastLiveEvents = events;
     timelineStatus.textContent = '';
     connectionStatus.classList.remove('is-offline');
@@ -316,6 +364,53 @@ for (const button of speedButtons) {
     lastTick = Date.now();
   });
 }
+
+const demoSpeedButton = speedButtons.find((button) => Number(button.dataset.speed) === 400);
+if (import.meta.env.DEV && demoSpeedButton) demoSpeedButton.hidden = false;
+
+if (!('Notification' in window)) {
+  notificationsButton.disabled = true;
+  notificationStatus.textContent = 'Browser notifications are not supported here.';
+} else if (!window.isSecureContext) {
+  notificationsButton.disabled = true;
+  notificationStatus.textContent = 'Browser notifications require a secure connection.';
+}
+
+notificationsButton.addEventListener('click', async () => {
+  if (!('Notification' in window) || !window.isSecureContext) return;
+
+  if (notificationsEnabled) {
+    notificationsEnabled = false;
+    notificationsButton.textContent = 'Enable notifications';
+    notificationsButton.setAttribute('aria-pressed', 'false');
+    notificationStatus.textContent = 'Notifications are off.';
+    return;
+  }
+
+  if (Notification.permission === 'denied') {
+    notificationStatus.textContent = 'Notifications are blocked in browser settings.';
+    return;
+  }
+
+  try {
+    const permission = Notification.permission === 'granted'
+      ? 'granted'
+      : await Notification.requestPermission();
+    if (permission !== 'granted') {
+      notificationStatus.textContent = permission === 'denied'
+        ? 'Notifications are blocked in browser settings.'
+        : 'Notifications were not enabled.';
+      return;
+    }
+
+    notificationsEnabled = true;
+    notificationsButton.textContent = 'Notifications on';
+    notificationsButton.setAttribute('aria-pressed', 'true');
+    notificationStatus.textContent = 'Notifications enabled for newly unlocked events.';
+  } catch {
+    notificationStatus.textContent = 'Could not request browser notification permission.';
+  }
+});
 
 if (import.meta.env.DEV) {
   jumpButton.hidden = false;
@@ -423,6 +518,7 @@ broadcastButton.addEventListener('click', async () => {
 
 demoMode.addEventListener('change', () => {
   modeVersion += 1;
+  observedUnlockedEventIds = null;
   answerArea.hidden = true;
   broadcastPlayer.pause();
   broadcastPlayer.removeAttribute('src');

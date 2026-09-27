@@ -224,7 +224,12 @@ audio:focus-visible {
 
 .command-controls {
   flex: none;
+  flex-wrap: wrap;
   gap: 22px;
+}
+
+.command-controls > .button-secondary {
+  width: auto;
 }
 
 .run-controls {
@@ -294,6 +299,10 @@ audio:focus-visible {
   border-color: var(--terracotta);
   background: var(--terracotta);
   color: var(--paper);
+}
+
+#notification-status:not(:empty) {
+  margin: -12px 0 18px;
 }
 
 .content-grid {
@@ -690,12 +699,18 @@ audio:focus-visible {
   }
 
   .speed-options {
-    gap: 5px;
+    gap: 4px;
   }
 
   .speed-button {
-    min-width: 42px;
+    min-width: 38px;
     min-height: 36px;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .command-controls > .button-secondary {
+    width: 100%;
   }
 
   .side-panels {
