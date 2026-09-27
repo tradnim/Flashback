@@ -1,123 +1,63 @@
-# Shared API contract
+# Flashback API contract
 
-This document describes the public API used by the frontend and backend services. All timestamps are ISO 8601 strings in UTC, with a `Z` suffix.
+All request bodies/query strings use `simulationTime`, a UTC ISO timestamp such as `1986-04-26T01:23:40Z`. Invalid or missing input returns 400, never a default to now. The frontend emits UTC Z timestamps.
 
-`simulationTime` and `historicalTime` refer to the same value: the time shown by the simulation clock. The events endpoint uses `simulationTime` in its query string. The AI endpoints use `historicalTime` in their JSON request bodies. The AI service also accepts `simulationTime` in those bodies; if both names are supplied, they must represent the same instant.
+## Events — port 3000
 
-## Historical events
-
-`GET /api/events?simulationTime=<ISO-8601 timestamp>`
-
-The caller must provide `simulationTime`. Return only verified events whose timestamp is less than or equal to it. Do not substitute the computer's current time if the parameter is missing or invalid; return HTTP 400 instead.
-
-Successful response:
+`GET /api/events?simulationTime=1986-04-25T23:45:00Z`
 
 ```json
 {
   "status": "success",
-  "authoritativeClock": "1986-04-26T00:00:00Z",
+  "authoritativeClock": "1986-04-25T23:45:00.000Z",
   "count": 1,
-  "data": [
-    {
-      "eventId": "CHER-1986-0426-01",
-      "timestamp": "1986-04-26T00:00:00Z",
-      "title": "Event title",
-      "description": "Verified summary",
-      "category": "ACCIDENT",
-      "importance": "Critical",
-      "isVerified": true,
-      "citations": [
-        {
-          "sourceName": "Source name",
-          "referenceId": "Report or archive reference",
-          "url": "https://example.org/source"
-        }
-      ]
-    }
-  ]
+  "data": [{
+    "eventId": "example-record",
+    "title": "Recorded update",
+    "description": "Information available at this time.",
+    "timestamp": "1986-04-25T14:00:00.000Z",
+    "category": "OPERATIONAL",
+    "importance": "High",
+    "isVerified": true,
+    "citations": [{"sourceName": "Archive", "referenceId": "Record 1"}]
+  }]
 }
 ```
 
-- `authoritativeClock` is the timestamp used to filter the results.
-- `count` is the number of records in `data` and must not include future events.
-- `eventId` is the stable identifier for an event.
-- The current dataset uses `OPERATIONAL`, `SAFETY`, `ACCIDENT`, `EMERGENCY_RESPONSE`, and `RADIOLOGICAL` categories.
-- `importance` is an optional string currently using `Low`, `Medium`, `High`, or `Critical`.
-- Each citation has `sourceName` and `referenceId`; `url` is optional.
+Illustrative payload, not a factual dataset entry. Records sort ascending and satisfy `timestamp <= simulationTime` and `isVerified: true`. Citations may include an HTTP(S) `url`. Database failures return 503 `DATABASE_UNAVAILABLE`; invalid input returns 400 `INVALID_SIMULATION_TIME`. The existing `authoritativeClock` response field is preserved.
 
-The route currently returns MongoDB documents, which may include storage metadata such as `_id`, `createdAt`, `updatedAt`, and `__v`. Clients should use the public fields listed above and must not depend on database metadata.
+## Questions — port 8000
 
-Invalid or missing timestamps return HTTP 400, for example:
+`POST /api/ask`:
 
 ```json
-{
-  "error": "INVALID_SIMULATION_TIME",
-  "message": "A valid simulationTime is required."
-}
+{"question":"What is known?","simulationTime":"1986-04-25T23:45:00Z"}
 ```
 
-## Ask the historian
+Response: `{"answer":"...","known":true,"sources":[{"label":"Archive","referenceId":"Record 1","eventId":"example-record","eventTitle":"Recorded update"}]}`.
 
-`POST /api/ask`
+Questions must be nonempty and at most 4,000 characters. AI retrieves from the engine and independently excludes future, unverified, uncited, malformed and duplicate records. Citation IDs must resolve to unlocked records. Source URLs are optional. Context filtering reduces spoilers; a prompt and citation ID checks alone do not guarantee the model's factual fidelity.
 
-Request:
+## Briefings and audio — port 8000
+
+`POST /api/broadcast`:
 
 ```json
-{
-  "question": "What is known about the situation?",
-  "historicalTime": "1986-04-26T00:00:00Z"
-}
+{"simulationTime":"1986-04-25T23:45:00Z"}
 ```
 
-The AI service receives only verified, cited events at or before `historicalTime`. It must not reveal later outcomes.
+Response: `{"script":"...","audioUrl":"/api/audio/<token>"}`.
 
-Successful response:
+Default playback URL is same-origin through Vite. `AI_VOICE_PUBLIC_URL` overrides its HTTP(S) base. The frontend accepts relative paths, HTTP(S), and base64 `data:audio/<mime>;base64,...`. Other protocols/data types are rejected. The current backend returns in-memory MP3 playback URLs, not embedded data URLs.
 
-```json
-{
-  "answer": "Answer grounded in information available at that time.",
-  "sources": [
-    {
-      "label": "Source name",
-      "url": "https://example.org/source",
-      "eventId": "CHER-1986-0426-01",
-      "eventTitle": "Event title"
-    }
-  ]
-}
-```
+`GET /api/audio/<token>` returns 200 or 206 for a valid single byte range, and 416 for invalid ranges. Tokens expire after 15 minutes, can be evicted sooner and are lost on restart. Missing/expired tokens return 404 `AUDIO_NOT_FOUND`; regenerate to recover. Playback is user-initiated.
 
-`sources` may be empty when the unlocked records do not support an answer. `url`, `eventId`, and `eventTitle` may be omitted when unavailable.
+## Health, routing and errors
 
-## Radio briefing
+Both services: `GET /health` for liveness. Engine `GET /ready` pings MongoDB. AI `GET /ready` checks the engine and local provider configuration without paid calls. 200 means these checks passed; 503 indicates an unavailable dependency/configuration. `authenticationVerified: false` means readiness has not exercised provider authentication.
 
-`POST /api/broadcast`
+Frontend routing: `/api/events` → 3000; `/api/ask`, `/api/broadcast`, `/api/audio` → 8000. `/api/history/health|ready` and `/api/ai/health|ready` map to service health paths.
 
-Request:
+AI errors contain `error` and an optional safe `message`: `INVALID_REQUEST` (400), `REQUEST_TOO_LARGE` (413), `ORIGIN_NOT_ALLOWED` (403), `HISTORICAL_ENGINE_UNAVAILABLE` (502), `GEMINI_NOT_CONFIGURED`/`ELEVENLABS_NOT_CONFIGURED` (503), `GEMINI_RATE_LIMITED` (503), `GEMINI_PERMISSION_DENIED`/`GEMINI_UNAVAILABLE`/`ELEVENLABS_UNAVAILABLE` (502). Never expose credential-bearing provider error details.
 
-```json
-{
-  "historicalTime": "1986-04-26T00:00:00Z"
-}
-```
-
-Successful response:
-
-```json
-{
-  "script": "A brief, time-appropriate radio update.",
-  "audioUrl": "data:audio/mpeg;base64,<base64-encoded-mp3>"
-}
-```
-
-`audioUrl` is a playable MP3 data URL embedded in the JSON response, not a separately hosted file. The script and audio must use only events unlocked at `historicalTime`.
-
-## Shared rules
-
-- Reject missing or invalid timestamps with HTTP 400. Timestamps must include a timezone and be interpreted in UTC.
-- Never return future event records or information that reveals future event titles, counts, or times.
-- Keep source records attached to event-derived answers.
-- Coordinate changes to these request and response shapes with all service owners before changing the implementation.
-=======
-blach
->>>>>>> refs/rewritten/main
+Offline demo is explicitly selected, never an automatic error fallback. Live failures retain the last successful timeline; timeline, question and audio errors are displayed separately.

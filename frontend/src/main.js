@@ -19,6 +19,10 @@ const answerSources = document.querySelector('#answer-sources');
 const broadcastButton = document.querySelector('#broadcast-button');
 const broadcastStatus = document.querySelector('#broadcast-status');
 const broadcastPlayer = document.querySelector('#broadcast-player');
+const demoMode = document.querySelector('#demo-mode');
+const timelineStatus = document.querySelector('#timeline-status');
+let modeVersion = 0;
+let lastLiveEvents = null;
 
 // A tiny offline presentation sample copied from James's initial event dataset.
 const DEMO_EVENTS = [
@@ -61,7 +65,7 @@ let simulationSpeed = 1;
 let running = true;
 let lastTick = Date.now();
 let timelineLoading = false;
-let lastTimelineRefresh = 0;
+let lastTimelineRefresh = Date.now();
 const timelineRefreshInterval = 5000;
 
 function isoSimulationTime() {
@@ -128,11 +132,12 @@ function demoBriefingText() {
   }
 
   const headlines = events.map((event) => `${formatTime(event.timestamp)} — ${event.title}`);
-  return `Demo briefing (text only; audio playback is not part of this fallback): ${headlines.join('. ')}.`;
+    return `Demo briefing (text only): ${headlines.join('. ')}.`;
 }
 
 async function requestJson(path, options = {}) {
   const response = await fetch(path, {
+    signal: AbortSignal.timeout(path.startsWith('/api/events') ? 12000 : 90000),
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -144,7 +149,7 @@ async function requestJson(path, options = {}) {
   try {
     body = await response.json();
   } catch {
-    throw new Error('The server returned an invalid response.');
+    throw new Error(response.status >= 500 ? 'The service could not be reached. Check that its backend is running.' : 'The server returned an invalid response.');
   }
 
   if (!response.ok) {
@@ -158,7 +163,15 @@ function addSourceLinks(container, sources) {
   if (!Array.isArray(sources)) return;
 
   for (const source of sources) {
-    if (!source || typeof source.url !== 'string') continue;
+    if (!source) continue;
+    if (typeof source.url !== 'string') {
+      if (source.referenceId || source.title) {
+        const item = document.createElement('li');
+        item.textContent = `${source.label || 'Source'} · ${source.referenceId || source.title}`;
+        container.append(item);
+      }
+      continue;
+    }
     let url;
     try {
       url = new URL(source.url, window.location.origin);
@@ -181,7 +194,7 @@ function addSourceLinks(container, sources) {
 function renderEvents(events) {
   const unlockedEvents = events
     .filter((event) => event && Number.isFinite(Date.parse(event.timestamp)))
-    .filter((event) => event.isVerified !== false)
+    .filter((event) => event.isVerified === true)
     .filter((event) => Date.parse(event.timestamp) <= simulationTime)
     .sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp));
 
@@ -229,22 +242,34 @@ function renderEvents(events) {
 }
 
 async function loadEvents() {
+  if (demoMode.checked) {
+    renderEvents(DEMO_EVENTS);
+    connectionStatus.textContent = 'OFFLINE DEMO';
+    connectionStatus.classList.add('is-offline');
+    timelineStatus.textContent = 'Sample events only. Live services are not being used.';
+    return;
+  }
   if (timelineLoading) return;
   timelineLoading = true;
+  const version = modeVersion;
   const requestedTime = isoSimulationTime();
   const query = new URLSearchParams({ simulationTime: requestedTime });
 
   try {
     const result = await requestJson(`/api/events?${query.toString()}`);
+    if (version !== modeVersion) return;
     const events = result.events ?? result.data;
     if (!Array.isArray(events)) throw new Error('The event response is missing its event list.');
     renderEvents(events);
+    lastLiveEvents = events;
+    timelineStatus.textContent = '';
     connectionStatus.classList.remove('is-offline');
     connectionStatus.innerHTML = '<i></i> API connected';
-  } catch {
-    renderEvents(DEMO_EVENTS);
+  } catch (error) {
+    if (version !== modeVersion) return;
     connectionStatus.classList.add('is-offline');
-    connectionStatus.innerHTML = '<i></i> DEMO MODE · API offline';
+    connectionStatus.textContent = 'TIMELINE DISCONNECTED';
+    timelineStatus.textContent = `Timeline unavailable. ${error.message} ${lastLiveEvents ? 'Showing the last successful timeline.' : 'No live events have loaded.'} Retrying automatically.`;
   } finally {
     timelineLoading = false;
   }
@@ -293,6 +318,7 @@ questionForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const question = questionInput.value.trim();
   if (!question) return;
+  const version = modeVersion;
 
   answerArea.hidden = false;
   answerStatus.textContent = 'Asking with information available at this time…';
@@ -300,44 +326,80 @@ questionForm.addEventListener('submit', async (event) => {
   answerSources.replaceChildren();
   setButtonBusy(askButton, true, 'Asking…', 'Ask');
 
+  if (demoMode.checked) {
+    const result = demoHistorianResponse();
+    answerText.textContent = result.answer;
+    answerStatus.textContent = 'Offline demo · not AI-generated';
+    addSourceLinks(answerSources, result.sources);
+    setButtonBusy(askButton, false, 'Asking…', 'Ask');
+    return;
+  }
+
   try {
     const result = await requestJson('/api/ask', {
       method: 'POST',
       body: JSON.stringify({ question, simulationTime: isoSimulationTime() }),
     });
+    if (version !== modeVersion) return;
     answerText.textContent = result.answer || 'No answer was returned.';
-    answerStatus.textContent = result.known === false ? 'The outcome is not known at this simulated time.' : 'Historian response';
+    answerStatus.textContent = result.known === false ? 'The outcome is not known at this simulation time.' : 'Historian response';
     addSourceLinks(answerSources, result.sources);
-  } catch {
-    const fallback = demoHistorianResponse();
-    answerText.textContent = fallback.answer;
-    answerStatus.textContent = 'Demo historian response · sample data only';
-    addSourceLinks(answerSources, fallback.sources);
+  } catch (error) {
+    if (version !== modeVersion) return;
+    answerStatus.textContent = `Question unavailable. ${error.message}`;
   } finally {
     setButtonBusy(askButton, false, 'Asking…', 'Ask');
   }
 });
 
 broadcastButton.addEventListener('click', async () => {
+  const version = modeVersion;
   broadcastStatus.textContent = 'Generating briefing…';
   broadcastPlayer.hidden = true;
   broadcastPlayer.removeAttribute('src');
   setButtonBusy(broadcastButton, true, 'Generating…', 'Generate briefing');
+
+  if (demoMode.checked) {
+    broadcastStatus.textContent = demoBriefingText();
+    setButtonBusy(broadcastButton, false, 'Generating…', 'Generate briefing');
+    return;
+  }
 
   try {
     const result = await requestJson('/api/broadcast', {
       method: 'POST',
       body: JSON.stringify({ simulationTime: isoSimulationTime() }),
     });
+    if (version !== modeVersion) return;
     if (typeof result.audioUrl !== 'string') throw new Error('The response is missing audioUrl.');
     broadcastPlayer.src = resolveAudioUrl(result.audioUrl, window.location.origin);
     broadcastPlayer.hidden = false;
     broadcastStatus.textContent = result.script || 'Briefing ready.';
-  } catch {
-    broadcastStatus.textContent = demoBriefingText();
+  } catch (error) {
+    if (version !== modeVersion) return;
+    broadcastStatus.textContent = `Audio unavailable. ${error.message}`;
   } finally {
     setButtonBusy(broadcastButton, false, 'Generating…', 'Generate briefing');
   }
+});
+
+demoMode.addEventListener('change', () => {
+  modeVersion += 1;
+  answerArea.hidden = true;
+  broadcastPlayer.pause();
+  broadcastPlayer.removeAttribute('src');
+  broadcastPlayer.hidden = true;
+  broadcastStatus.textContent = '';
+  if (!demoMode.checked) {
+    renderEvents(lastLiveEvents || []);
+    connectionStatus.textContent = 'CONNECTING';
+    timelineStatus.textContent = 'Connecting to the live timeline…';
+  }
+  loadEvents();
+});
+
+broadcastPlayer.addEventListener('error', () => {
+  if (broadcastPlayer.hasAttribute('src')) broadcastStatus.textContent = 'Audio could not be played. The link may have expired; create a new briefing.';
 });
 
 updateClock();

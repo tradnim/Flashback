@@ -1,12 +1,21 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { initializeDatabase, getEventsUpToSimulationTime } = require('../services/eventService');
+const { connectDatabase, pingDatabase, databaseDiagnostic } = require('../../../../database');
+const { getEventsUpToSimulationTime } = require('../services/eventService');
 
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/chernobyl_simulation';
+const PORT = Number(process.env.PORT || 3000);
+app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'history-engine' }));
+app.get('/ready', async (_req, res) => {
+  try {
+    await pingDatabase();
+    res.json({ status: 'ready', database: 'connected' });
+  } catch {
+    res.status(503).json({ status: 'unavailable', error: 'DATABASE_UNAVAILABLE' });
+  }
+});
 
 const ISO_UTC_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/;
 
@@ -65,24 +74,39 @@ app.get('/api/events', async (req, res) => {
       data: events
     });
   } catch (error) {
-    console.error('Error fetching simulation events:', error);
-    return res.status(500).json({
-      error: 'INTERNAL_SERVER_ERROR',
-      message: 'An error occurred while evaluating simulation event triggers.'
+    return res.status(503).json({
+      error: 'DATABASE_UNAVAILABLE',
+      message: 'The event database is unavailable. Check the history engine configuration and Atlas connection.'
     });
   }
 });
 
 // If run directly
 if (require.main === module) {
-  mongoose.connect(MONGO_URI)
-    .then(async () => {
-      await initializeDatabase();
-      app.listen(PORT, () => {
+  if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+    console.error('PORT must be an integer between 1 and 65535.');
+    process.exit(1);
+  }
+  connectDatabase()
+    .then(() => {
+      const server = app.listen(PORT, '127.0.0.1', () => {
         console.log(`[API Server] Chernobyl simulation event service running on port ${PORT}`);
       });
+      server.on('error', async () => {
+        console.error('History engine could not listen. Check PORT and whether it is already in use.');
+        await mongoose.disconnect();
+        process.exitCode = 1;
+      });
+      for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
+        server.close(async () => { await mongoose.disconnect(); process.exit(0); });
+        setTimeout(() => process.exit(1), 5000).unref();
+      });
     })
-    .catch(err => console.error('MongoDB connection error:', err));
+    .catch(async error => {
+      console.error(databaseDiagnostic(error));
+      await mongoose.disconnect();
+      process.exitCode = 1;
+    });
 }
 
 module.exports = app;

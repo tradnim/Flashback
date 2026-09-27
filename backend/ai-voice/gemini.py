@@ -73,17 +73,20 @@ def generate_grounded_json(system_instruction: str, user_content: str) -> dict[s
             enterprise=True,
             project=project,
             location=location,
-            http_options=types.HttpOptions(api_version="v1"),
+            http_options=types.HttpOptions(api_version="v1", timeout=60000),
         )
-        response = client.models.generate_content(
-            model=model,
-            contents=user_content,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                response_schema=GROUNDED_ANSWER_SCHEMA,
-            ),
-        )
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=user_content,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json",
+                    response_schema=GROUNDED_ANSWER_SCHEMA,
+                ),
+            )
+        finally:
+            client.close()
     except errors.APIError as exc:
         status_code = getattr(exc, "code", None)
         if status_code == 429:

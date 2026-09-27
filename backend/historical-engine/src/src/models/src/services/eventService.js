@@ -5,18 +5,17 @@ const initialEvents = require('../data/initialEvents');
  * Ensures initial seed data exists in the database.
  */
 async function initializeDatabase() {
-  try {
-    for (const eventData of initialEvents) {
-      await ChernobylEvent.updateOne(
-        { eventId: eventData.eventId },
-        { $set: eventData },
-        { upsert: true }
-      );
-    }
-    console.log('[EventService] Initial Chernobyl event dataset verified and synced.');
-  } catch (error) {
-    console.error('[EventService] Failed to initialize event dataset:', error);
+  await ChernobylEvent.createIndexes();
+  let inserted = 0;
+  for (const eventData of initialEvents) {
+    const result = await ChernobylEvent.updateOne(
+      { eventId: eventData.eventId },
+      { $setOnInsert: eventData },
+      { upsert: true, timestamps: false }
+    );
+    inserted += result.upsertedCount;
   }
+  return { inserted, total: await ChernobylEvent.countDocuments() };
 }
 
 /**
@@ -38,12 +37,13 @@ async function getEventsUpToSimulationTime(simulationTimestamp) {
 
   // Strict simulation time rule: timestamp <= targetTime
   const query = {
-    timestamp: { $lte: targetTime }
+    timestamp: { $lte: targetTime },
+    isVerified: true
   };
 
   return await ChernobylEvent.find(query)
     .sort({ timestamp: 1 })
-    .lean();
+    .maxTimeMS(5000).lean();
 }
 
 module.exports = {

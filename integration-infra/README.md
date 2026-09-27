@@ -1,33 +1,17 @@
 # Chris — Integration / Infrastructure
 
-Own this folder. Coordinate the shared API contract, connect the services and MongoDB Atlas, manage the DigitalOcean deployment/domain, and prepare the integrated demo.
+Own Atlas setup, service configuration, the API contract, startup and end-to-end verification. Follow the root setup guide, then run `node integration-infra/start.mjs` from the root.
 
-## Start here
+The command checks settings/ports, starts the engine after a database ping, then AI and Vite. It cleans up its own children on failure or Ctrl+C. It never kills existing services or seeds automatically.
 
-1. Review and confirm `API_CONTRACT.md` with Mario, James, and Noriel before they wire their parts to it. DONE
-2. Create deployment and database configuration here; keep secrets out of Git and provide service-specific `.env.example` files with names only.
-=======
-2. Create deployment and database configuration here; keep secrets out of Git and provide service-specific `.env.example` files.
->>>>>>> refs/rewritten/main
-3. Bring the frontend and service endpoints together, then write the one-command local start instructions in the root README.
-4. Keep a dependable demo path available if external AI or voice APIs are unavailable.
+## Acceptance checklist
 
-The current frontend starts on its own with the instructions in the root README. No database or API keys are needed to view it.
+- Confirm free Atlas tier, region, database-scoped user and individual team IP access entries.
+- Run engine `check:db -- --verify-seed`; verify stable counts and unchanged records.
+- Check each service's readiness and distinguish provider failures from MongoDB failures.
+- Run the root guide's tests and production build.
+- Exercise events, questions, broadcasts and audio seeking through port 5173, including disconnected dependencies.
+- Configure providers privately and make one real Gemini request and one real ElevenLabs briefing.
+- Have another teammate run `check:db` and load live events before claiming team-wide connectivity.
 
-## Local environment files
-
-Each backend service has a safe `.env.example` template. Copy a template to `.env` only if that service does not already have a `.env` file; do not overwrite a teammate's local file because it may contain private credentials.
-
-```powershell
-if (-not (Test-Path backend\historical-engine\.env)) {
-  Copy-Item backend\historical-engine\.env.example backend\historical-engine\.env
-}
-
-if (-not (Test-Path backend\ai-voice\.env)) {
-  Copy-Item backend\ai-voice\.env.example backend\ai-voice\.env
-}
-```
-
-The historical engine's `npm start` command loads its file with Node's `--env-file` option (Node.js 20.6 or newer). The AI-VOICE server already loads `backend\ai-voice\.env` itself. Set private API keys only in those local `.env` files, which Git ignores. `MONGO_URI` may use the local MongoDB example or a private MongoDB Atlas connection string.
-
-The current `/api/ask` implementation still expects Gemini, but the AI provider is being reassigned. Its key is intentionally commented out in the AI-VOICE example until the team confirms the replacement or a new owner for Gemini.
+Public deployment, paid infrastructure, notifications and jump-to-event features are excluded. Later production hosting needs the same API routing as the Vite development proxy.

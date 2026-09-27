@@ -17,8 +17,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+from urllib.request import urlopen
 
 try:  # Support package imports and running server.py directly.
+    from .provider_status import provider_status
     from .eleven import ElevenLabsError, generate_briefing
     from .gemini import GeminiError, answer_question
     from .historical_context import (
@@ -27,6 +29,7 @@ try:  # Support package imports and running server.py directly.
         parse_timestamp,
     )
 except ImportError:  # pragma: no cover - import style depends on the app layout.
+    from provider_status import provider_status
     from eleven import ElevenLabsError, generate_briefing
     from gemini import GeminiError, answer_question
     from historical_context import HistoricalContextError, fetch_events_from_engine, parse_timestamp
@@ -99,24 +102,12 @@ class AudioStore:
 
 
 def _canonical_simulation_time(body: dict[str, Any]) -> str:
-    """Accept the shared draft's historicalTime and prefer simulationTime."""
-    raw_values = [
-        body.get(field)
-        for field in ("simulationTime", "historicalTime")
-        if body.get(field) not in (None, "")
-    ]
-    if not raw_values:
-        raise InvalidRequest("simulationTime or historicalTime is required")
-
+    """Use the single shared simulationTime request field."""
     try:
-        parsed_values = [parse_timestamp(value) for value in raw_values]
+        parsed = parse_timestamp(body.get("simulationTime"))
     except HistoricalContextError:
-        raise InvalidRequest(
-            "simulationTime or historicalTime must be a timezone-aware ISO-8601 timestamp"
-        ) from None
-    if any(value != parsed_values[0] for value in parsed_values[1:]):
-        raise InvalidRequest("simulationTime and historicalTime must match")
-    return parsed_values[0].isoformat().replace("+00:00", "Z")
+        raise InvalidRequest("A valid UTC simulationTime is required") from None
+    return parsed.isoformat().replace("+00:00", "Z")
 
 
 def _source_response(citations: Any) -> list[dict[str, Any]]:
@@ -273,12 +264,7 @@ class AIVoiceHandler(BaseHTTPRequestHandler):
                 )
             base = configured_base
         else:
-            origin = urlsplit(self.headers.get("Origin", ""))
-            hostname = origin.hostname or "127.0.0.1"
-            if ":" in hostname and not hostname.startswith("["):
-                hostname = f"[{hostname}]"
-            port = self.server.server_address[1]
-            base = f"http://{hostname}:{port}"
+            base = ""
         return f"{base}/api/audio/{token}"
 
     def _read_json(self) -> dict[str, Any]:
@@ -312,13 +298,32 @@ class AIVoiceHandler(BaseHTTPRequestHandler):
         if self._reject_unlisted_origin():
             return
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Max-Age", "600")
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API name.
         path = urlsplit(self.path).path
+        if path == "/health":
+            self._send_json(200, {"status": "ok", "service": "ai-voice"})
+            return
+        if path == "/ready":
+            engine_ready = False
+            try:
+                base = os.environ.get("HISTORICAL_ENGINE_URL", "http://127.0.0.1:3000").rstrip("/")
+                with urlopen(f"{base}/ready", timeout=6) as response:
+                    engine_ready = json.load(response).get("status") == "ready"
+            except Exception:
+                pass
+            providers = provider_status()
+            ready = engine_ready and all(item["configured"] for item in providers.values())
+            self._send_json(200 if ready else 503, {
+                "status": "ready" if ready else "unavailable",
+                "historyEngine": "ready" if engine_ready else "unavailable",
+                "providers": providers,
+            })
+            return
         audio_match = re.fullmatch(r"/api/audio/([A-Za-z0-9_-]{20,64})", path)
         if audio_match:
             audio = self.server.audio_store.get(audio_match.group(1))  # type: ignore[attr-defined]
@@ -346,6 +351,9 @@ class AIVoiceHandler(BaseHTTPRequestHandler):
                     raise InvalidRequest("question is required")
                 if len(question) > 4000:
                     raise InvalidRequest("question must be 4000 characters or fewer")
+                if not provider_status()["gemini"]["configured"]:
+                    self._send_json(503, {"error": "GEMINI_NOT_CONFIGURED", "message": "Configure Gemini project, model, SDK and Google application credentials. See AI /ready."})
+                    return
                 answer = answer_question(
                     question,
                     simulationTime,
@@ -361,6 +369,9 @@ class AIVoiceHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if not provider_status()["elevenlabs"]["configured"]:
+                self._send_json(503, {"error": "ELEVENLABS_NOT_CONFIGURED", "message": "Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID. See AI /ready."})
+                return
             briefing = generate_briefing(simulationTime, fetch_events_from_engine)
             audio_token = self.server.audio_store.put(  # type: ignore[attr-defined]
                 briefing["audio_bytes"]

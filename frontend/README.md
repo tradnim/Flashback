@@ -1,29 +1,22 @@
 # Mario — Frontend/UI
 
-> **Scope reminder:** Stay inside `frontend/`. Do not read or change files outside this folder unless the user explicitly says to.
+> Scope reminder: Stay inside `frontend/` unless the user explicitly authorizes cross-project work. This shared-database integration pass is authorized across the project.
 
-Own this folder. Build the Chernobyl experience UI: timeline, simulated clock, demo-speed control, question panel, and radio briefing controls. Keep historical facts in the historical service; consume them through the agreed API contract.
+Keep the responsive Flashback design simple. The frontend owns the simulation clock, rendering and feedback; records belong to the engine.
 
-## Start locally
+```powershell
+npm ci
+npm run dev
+npm test
+npm run build
+```
 
-For the connected local app, start these services in separate terminals:
+For all services use the root guide and `node integration-infra/start.mjs`. Vite uses port 5173, forwarding events to 3000 and questions/broadcasts/audio to 8000. Only service addresses may use `VITE_HISTORY_ENGINE_URL` and `VITE_AI_VOICE_URL`, never credentials.
 
-1. Start MongoDB locally, or set `MONGO_URI` to your MongoDB connection string.
-2. In `backend/historical-engine`, run `npm install` once, then `npm start`.
-3. In `backend/ai-voice`, run `python server.py` after its local provider configuration is ready.
-4. In this `frontend` folder, run `npm install` once, then `npm run dev`.
-5. Open the URL Vite prints (usually `http://localhost:5173`).
+All requests use `simulationTime`. Rendering requires verified records unlocked by the clock. Live failures retain the last successful timeline and display separate timeline, question and audio errors.
 
-Vite forwards `/api/events` to the historical engine at `http://localhost:3000`, and `/api/ask` plus `/api/broadcast` to the AI/voice service at `http://127.0.0.1:8000`. Set `VITE_HISTORY_ENGINE_URL` or `VITE_AI_VOICE_URL` in a local frontend env file if either service uses a different address. These are service addresses, not API keys.
+Select **Offline demo** for two sample events and text-only responses without services. It is never automatic. Switching modes clears stale answers/audio and restores cached live records while reconnecting.
 
-For a quick offline presentation, the frontend can run by itself. If an API is unavailable, the page uses a small, clearly labeled demo based on two events from James's initial dataset. The historian and radio briefing show sample text; the demo radio fallback does not play audio.
+Playback supports same-origin paths, HTTP(S) and base64 audio data URLs. Expired/unplayable links prompt regeneration. Vite proxies audio seeking too.
 
-## Files
-
-- `index.html` — responsive page structure for the clock, timeline, historian, and radio briefing
-- `src/main.js` — simulation clock, API requests, rendering, and loading/error states
-- `src/styles.css` — Figma-inspired parchment, brown, terracotta, and olive theme with responsive layout
-
-The timeline sends `GET /api/events?simulationTime=<ISO timestamp>`. It accepts the engine's current `{ data: [...] }` response and the shared `{ events: [...] }` shape. It maps event citations into source links and hides unverified or not-yet-unlocked events. The question and audio panels call `POST /api/ask` with `{ question, simulationTime }` and `POST /api/broadcast` with `{ simulationTime }`; those endpoints need to be provided by the AI/voice service.
-
-Coordinate endpoint or payload changes in `../integration-infra/API_CONTRACT.md` with Chris before wiring the API.
+Main files: `index.html` (structure), `src/main.js` (clock/state/API), `src/styles.css` (theme), `src/audio-url.js` (URL validation). Static builds need production reverse-proxy routes and backends to use live features.

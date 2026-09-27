@@ -1,150 +1,27 @@
-# AI-VOICE
+# Noriel — AI + Voice
 
-Python HTTP service for Flashback's time-gated historian answers and spoken
-briefings. It asks the historical engine for events at the requested
-`simulationTime`, applies a second cutoff, and passes only verified, cited,
-unlocked records to Gemini or the deterministic briefing script. ElevenLabs
-speaks that script; it does not create or add historical facts.
-
-## Run locally
-
-Use Python 3.10 or newer. Install the AI-VOICE dependency and authenticate to
-the Google Cloud project before starting the service. Start James's historical
-engine first, then start AI-VOICE from this folder:
+Python 3.10+ service: http://127.0.0.1:8000. This is not MongoDB. Events come from `HISTORICAL_ENGINE_URL=http://127.0.0.1:3000`.
 
 ```powershell
-python -m pip install -r requirements.txt
-python server.py
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+# Copy .env.example to .env only if absent; configure privately.
+.venv/Scripts/python.exe server.py
+.venv/Scripts/python.exe -m unittest -v test_integration
 ```
 
-For local development, use Application Default Credentials (ADC), not an API
-key in `.env`:
+Use `.venv/bin/python` on macOS/Linux. Local `.env` loading preserves existing process environment. Keep secrets out of the frontend and Git.
 
-```powershell
-gcloud init
-gcloud auth application-default login
-```
+Gemini requires `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` (global), `GEMINI_MODEL` and Google Application Default Credentials. Use `gcloud auth application-default login` or `GOOGLE_APPLICATION_CREDENTIALS` pointing to a private file. Pinned SDK 2.25.0 supports `enterprise=True`; real model permissions still require a live test. See the [official SDK](https://github.com/googleapis/python-genai).
 
-Choose the GCP project linked to the credits and enabled for Agent Platform.
-The Google account used for ADC needs the **Agent Platform User** role.
+ElevenLabs requires `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`; model defaults to eleven_multilingual_v2. Blank `AI_VOICE_PUBLIC_URL` returns same-origin audio URLs. Local browser origins are localhost/127.0.0.1 port 5173; adjust `AI_VOICE_ALLOWED_ORIGINS` for other clients.
 
-By default, AI-VOICE listens at `http://127.0.0.1:8000` and the historical
-engine is expected at `http://127.0.0.1:3000`. The frontend's Vite server
-proxies `/api/ask` and `/api/broadcast` to AI-VOICE.
+`/health` is liveness. `/ready` checks engine readiness and local provider settings without paid requests, not tokens/quotas/model permissions. Missing provider settings produce specific 503 responses.
 
-## HTTP API
+`POST /api/ask`: `{"question":"What is known?","simulationTime":"1986-04-25T23:45:00Z"}`.
 
-All request times must be timezone-aware UTC ISO-8601 values. `Z` is the
-recommended suffix. Invalid, missing, local-time, or non-UTC values receive
-HTTP 400.
+`POST /api/broadcast`: `{"simulationTime":"1986-04-25T23:45:00Z"}`.
 
-### `POST /api/ask`
+Both paths filter timestamps, explicit verification and citations again. Gemini sees only filtered records. Briefings use a deterministic script and ElevenLabs speech. Audio lives for up to 15 minutes in bounded memory, supports seeking and disappears on restart.
 
-Request:
-
-```json
-{
-  "question": "What was known about the reactor at this time?",
-  "simulationTime": "1986-04-26T00:00:00Z"
-}
-```
-
-`historicalTime` is also accepted for the shared contract. If both time fields
-are supplied, they must represent the same instant. The service returns the
-model's known status and only citations resolved to unlocked historical
-records:
-
-```json
-{
-  "answer": "The unlocked record reports ...",
-  "known": true,
-  "sources": [
-    {
-      "label": "Source name",
-      "url": "https://example.org/source",
-      "eventId": "CHER-1986-0426-01",
-      "eventTitle": "Event title"
-    }
-  ]
-}
-```
-
-When the record does not establish the outcome, `known` is `false`. Answers
-must not use information outside the unlocked event records. Source URLs may
-be omitted when the historical engine provides only a reference ID.
-
-### `POST /api/broadcast`
-
-Request:
-
-```json
-{"simulationTime":"1986-04-26T00:00:00Z"}
-```
-
-Response:
-
-```json
-{
-  "script": "Flashback briefing, based on the unlocked record ...",
-  "audioUrl": "http://127.0.0.1:8000/api/audio/<temporary-id>"
-}
-```
-
-The generated MP3 is served by `GET /api/audio/<temporary-id>`. Audio bytes
-stay in bounded memory (up to 32 clips and 32 MB), support HTTP byte-range
-requests for playback seeking, and expire after 15 minutes. Expired entries are
-purged on the next cache access; the URL then returns HTTP 404. The service
-does not write audio to disk or embed base64 audio in the JSON response.
-
-**Integration note:** the current shared `API_CONTRACT.md` describes `audioUrl`
-as an embedded `data:audio/mpeg` URL. AI-VOICE now returns an HTTP URL because
-the current web player accepts only HTTP(S). Chris should align that contract
-description before the integration is considered complete.
-
-## Configuration
-
-Set values in the process environment or this folder's ignored `.env` file.
-Process environment values take precedence. Copy `.env.example` to `.env` and
-fill in credentials locally; never commit `.env` or share its values.
-
-- `GOOGLE_CLOUD_PROJECT` (required; project ID used for Agent Platform calls)
-- `GOOGLE_CLOUD_LOCATION` (defaults to `global`)
-- `GEMINI_MODEL` (defaults to `gemini-3.5-flash`)
-- `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` (required for audio)
-- `ELEVENLABS_MODEL_ID` (defaults to `eleven_multilingual_v2`)
-- `HISTORICAL_ENGINE_URL` (defaults to `http://127.0.0.1:3000`)
-- `HISTORICAL_ENGINE_TIME_PARAM` (defaults to `simulationTime`; set to `time`
-  only if the engine route changes its query parameter)
-- `AI_VOICE_HOST` and `AI_VOICE_PORT` (defaults to `127.0.0.1` and `8000`)
-- `AI_VOICE_ALLOWED_ORIGINS` (comma-separated; defaults to the two local Vite
-  origins)
-- `AI_VOICE_PUBLIC_URL` (optional browser-reachable base URL for audio; when
-  empty, AI-VOICE uses the request origin's hostname and its listening port)
-
-Gemini uses the local ADC credentials created by `gcloud auth
-application-default login`. No Gemini API key is needed. Keep `.env` ignored
-and never commit credentials.
-
-For playback from another device using Vite's network link, set
-`AI_VOICE_HOST=0.0.0.0`, add the exact frontend network origin to
-`AI_VOICE_ALLOWED_ORIGINS`, and set `AI_VOICE_PUBLIC_URL` to
-`http://<computer-LAN-IP>:8000`. The computer's firewall must allow that port.
-For an HTTPS-hosted frontend, set `AI_VOICE_PUBLIC_URL` to the HTTPS URL of the
-public audio route to avoid mixed-content blocking.
-
-## Troubleshooting
-
-- `HISTORICAL_ENGINE_UNAVAILABLE`: check that the Node service is running and
-  that `HISTORICAL_ENGINE_URL` points to it.
-- `GEMINI_UNAVAILABLE`: check `GOOGLE_CLOUD_PROJECT`, the selected model, and
-  AI-VOICE terminal output. Credential details are never included in responses.
-- `GEMINI_PERMISSION_DENIED`: confirm ADC is signed in to the intended project
-  and that the account has the **Agent Platform User** role.
-- `GEMINI_RATE_LIMITED`: Agent Platform returned HTTP 429 for quota or capacity
-  reasons. Retry after a short delay and check the project's quota/usage.
-- `ELEVENLABS_UNAVAILABLE`: check the local key and voice ID.
-- `AUDIO_NOT_FOUND`: generated audio URLs are temporary and expire after 15
-  minutes; request a new briefing.
-- The frontend has an offline demo fallback. If it appears, inspect the
-  browser's Network panel and the relevant backend terminal to see the API
-  response that triggered it.
+Tests use real local HTTP with controlled provider fixtures; they do not spend credits or verify live provider credentials. Consult the shared API contract and root README.

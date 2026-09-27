@@ -74,12 +74,7 @@ def fetch_events_from_engine(simulationTime: str) -> list[Mapping[str, Any]]:
     if not base_url:
         raise HistoricalContextError("HISTORICAL_ENGINE_URL cannot be empty")
 
-    time_parameter = os.environ.get("HISTORICAL_ENGINE_TIME_PARAM", "simulationTime").strip()
-    if time_parameter not in ("simulationTime", "time"):
-        raise HistoricalContextError(
-            "HISTORICAL_ENGINE_TIME_PARAM must be 'simulationTime' or 'time'"
-        )
-    query = urlencode({time_parameter: simulationTime})
+    query = urlencode({"simulationTime": simulationTime})
     request = Request(
         f"{base_url}/api/events?{query}",
         headers={"Accept": "application/json"},
@@ -209,7 +204,7 @@ def load_unlocked_context(
         if event_time is None or event_time > cutoff:
             continue
 
-        if event.get("isVerified", event.get("is_verified", True)) is False:
+        if event.get("isVerified") is not True:
             continue
 
         event_id_value = _first_value(event, ("eventId", "event_id", "id", "_id"))
